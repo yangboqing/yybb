@@ -1,0 +1,297 @@
+//
+//  HomeToolCell.m
+//  MyHelper
+//
+//  Created by liguiyang on 15-3-4.
+//  Copyright (c) 2015年 myHelper. All rights reserved.
+//
+
+#import "HomeToolCell.h"
+
+@implementation HomeToolCell
+
+- (id)initWithFrame:(CGRect)frame
+{
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.iconView = [[UIImageView alloc] init];
+        [self addSubview:_iconView];
+        
+        self.titleLabel = [[UILabel alloc] init];
+        self.titleLabel.textAlignment = NSTextAlignmentCenter;
+        self.titleLabel.font = [UIFont systemFontOfSize:15.0];
+        self.titleLabel.backgroundColor = [UIColor clearColor];
+        self.titleLabel.textColor = [UIColor whiteColor];
+        [self addSubview:_titleLabel];
+        
+        // 装饰
+        headLabel = [[UILabel alloc] init];
+        headLabel.backgroundColor = hllColor(255, 255, 255, 0.1);
+        footLabel = [[UILabel alloc] init];
+        footLabel.backgroundColor = hllColor(0.0, 0.0, 0.0, 0.28);
+        sideLabel = [[UILabel alloc] init];
+        [self addSubview:headLabel];
+        [self addSubview:footLabel];
+        [self addSubview:sideLabel];
+        
+        self.lightImgView = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"lightOn.png"]];
+        [self addSubview:_lightImgView];
+        self.lightImgView.hidden = YES;
+    }
+    
+    return self;
+}
+
+- (void)setHeadLabelPosition:(PositionType)type
+{
+    CGFloat scale = MainScreeFrame.size.width/375;
+    CGFloat edgeWidth = self.bounds.size.width-160*scale;
+    
+    switch (type) {
+        case positionType_head:
+            headLabel.frame = CGRectMake(0, 0, self.bounds.size.width, 0.5);
+            footLabel.frame = CGRectMake(0, 0.5, self.bounds.size.width, 0.5);
+            break;
+        case positionType_headRight:{
+            headLabel.frame = CGRectMake(edgeWidth, 0, 160*scale, 0.5);
+            footLabel.frame = CGRectMake(edgeWidth, 0.5, 160*scale, 0.5);
+        }
+            break;
+        case positionType_headLeft:{
+            headLabel.frame = CGRectMake(0, 0, 160*scale, 0.5);
+            footLabel.frame = CGRectMake(0, 0.5, 160*scale, 0.5);
+        }
+            break;
+            
+        default:
+            break;
+    }
+}
+
+- (void)setSideLabelPosition:(PositionType)type
+{
+    CGFloat scale = MainScreeFrame.size.width/375.0;
+    CGFloat width = self.bounds.size.width;
+    CGFloat height = self.bounds.size.height;
+    UIColor *wColor = hllColor(255.0, 255.0, 255.0, 0.1);
+    UIColor *bColor = hllColor(0.0, 0.0, 0.0, 0.28);
+    
+    switch (type) {
+        case positionType_sideRight:
+            sideLabel.frame = CGRectMake(width-0.5, 0, 0.5, height);
+            sideLabel.backgroundColor = wColor;
+            break;
+        case positionType_sideRightUp:
+            sideLabel.frame = CGRectMake(width-0.5, 10*scale, 0.5, height-10*scale);
+            sideLabel.backgroundColor = wColor;
+            break;
+        case positionType_sideRightDown:
+            sideLabel.frame = CGRectMake(width-0.5, 0, 0.5, height-10*scale);
+            sideLabel.backgroundColor = wColor;
+            break;
+        case positionType_sideLeft:
+            sideLabel.frame = CGRectMake(0, 0, 0.5, height);
+            sideLabel.backgroundColor = bColor;
+            break;
+        case positionType_sideLeftUp:
+            sideLabel.frame = CGRectMake(0, 10*scale, 0.5, height-scale*10);
+            sideLabel.backgroundColor = bColor;
+            break;
+        case positionType_sideLeftDown:
+            sideLabel.frame = CGRectMake(0, 0, 0.5, height-scale*10);
+            sideLabel.backgroundColor = bColor;
+            break;
+            
+        default:
+            break;
+    }
+}
+
+- (void)layoutSubviews
+{
+    [super layoutSubviews];
+    
+    CGFloat width = self.bounds.size.width;
+    CGFloat height = self.bounds.size.height;
+    CGFloat localScale = height/140;
+    CGFloat iconHeight = 46*localScale;
+    CGFloat oriY = 37*localScale;
+    
+    self.iconView.frame = CGRectMake((width-iconHeight)*0.5, oriY, iconHeight, iconHeight);
+    self.titleLabel.frame = CGRectMake(0, _iconView.frame.origin.y+_iconView.frame.size.height+17*localScale, width, 25);
+    self.lightImgView.frame = CGRectMake(_iconView.frame.origin.x+iconHeight+6*localScale, oriY-19*localScale*0.5, 46*localScale, 19*localScale);
+}
+
+@end
+
+#pragma mark - HomeMemoryCell
+@implementation HomeMemoryCell
+
+- (id)initWithFrame:(CGRect)frame
+{
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.backgroundColor = [UIColor clearColor];
+        UIColor *whiteColor = [UIColor whiteColor];
+        
+        self.imgView = [[UIImageView alloc] init];
+        [self addSubview:_imgView];
+        
+        progressView = [[BPPProgressView alloc] init];
+        [progressView setProgressImage:[UIImage imageNamed:@"progress.png"]];
+        [progressView setTrackImage:[UIImage imageNamed:@"progressBg.png"]];
+        [self addSubview:progressView];
+        [self setProgressFrame];
+        
+        usedImgView = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"usedIcon.png"]];
+        [self addSubview:usedImgView];
+        freeImgView = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"freeIcon.png"]];
+        [self addSubview:freeImgView];
+        
+        self.memoryLabel = [[UILabel alloc] init];
+        self.memoryLabel.font = [UIFont systemFontOfSize:14.0];
+        self.memoryLabel.backgroundColor = [UIColor clearColor];
+        self.memoryLabel.textColor = whiteColor;
+        [self addSubview:_memoryLabel];
+        
+        self.usedMemoryLabel = [[UILabel alloc] init];
+        self.usedMemoryLabel.font = [UIFont systemFontOfSize:12.0];
+        self.usedMemoryLabel.backgroundColor = [UIColor clearColor];
+        self.usedMemoryLabel.textColor = whiteColor;
+        [self.usedMemoryLabel addObserver:self forKeyPath:@"text" options:NSKeyValueObservingOptionNew context:nil];
+        [self addSubview:_usedMemoryLabel];
+        
+        self.freeMemoryLabel = [[UILabel alloc] init];
+        self.freeMemoryLabel.font = [UIFont systemFontOfSize:12.0];
+        self.freeMemoryLabel.backgroundColor = [UIColor clearColor];
+        self.freeMemoryLabel.textColor = whiteColor;
+        [self.freeMemoryLabel addObserver:self forKeyPath:@"text" options:NSKeyValueObservingOptionNew context:nil];
+        [self addSubview:_freeMemoryLabel];
+        
+    }
+    
+    return self;
+}
+
+- (void)setProgressValue:(CGFloat)value
+{
+    [progressView setProgress:value animated:YES];
+}
+
+- (void)setProgressFrame
+{
+    CGFloat width = self.bounds.size.width;
+    CGFloat scaleWidth = width/375;
+    CGFloat edgeWidth = 23*scaleWidth;
+    CGFloat labelHeight = 24*scaleWidth;
+    CGFloat memoryOriX = edgeWidth+(35+18)*scaleWidth;
+    
+    progressView.frame = CGRectMake(memoryOriX, labelHeight+4*scaleWidth, width-memoryOriX-edgeWidth, 4);
+}
+
+- (void)layoutSubviews
+{
+    [super layoutSubviews];
+    
+    CGFloat width = self.bounds.size.width;
+    CGFloat height = self.bounds.size.height;
+    CGFloat scaleWidth = width/375;
+    CGFloat edgeWidth = 23*scaleWidth;
+    CGFloat labelHeight = 24*scaleWidth;
+    CGFloat memoryOriX = edgeWidth+(35+18)*scaleWidth;
+    
+//    CGFloat usedImgOriX = memoryOriX+(35+5)*scaleWidth;
+//    CGFloat labelWidth = (width-usedImgOriX-edgeWidth-(24+5)*scaleWidth)*0.5;
+//    CGFloat usedLabelOriX = usedImgOriX+(6+6)*scaleWidth;
+//    CGFloat freeImgOriX = usedLabelOriX + labelWidth + 5*scaleWidth;
+//    CGFloat freeLabelOriX = freeImgOriX + 12*scaleWidth;
+    CGFloat valueWidth = width - edgeWidth;
+    CGFloat freeLabelOriX = valueWidth-freeLabelWidth;
+    CGFloat freeImgOriX = freeLabelOriX - 12*scaleWidth;
+    CGFloat usedLabelOriX = freeImgOriX - 10*scaleWidth-usedLabelWidth;
+    CGFloat usedImgOriX = usedLabelOriX - 12*scaleWidth;
+    
+    self.imgView.frame = CGRectMake(edgeWidth, (height-35*scaleWidth)*0.5, 35*scaleWidth, 35*scaleWidth);
+    self.memoryLabel.frame = CGRectMake(memoryOriX, 0, 35*scaleWidth, labelHeight);
+    usedImgView.frame = CGRectMake(usedImgOriX, (labelHeight-6*scaleWidth)*0.5, 6*scaleWidth, 6*scaleWidth);
+    self.usedMemoryLabel.frame = CGRectMake(usedLabelOriX, 0, usedLabelWidth, labelHeight);
+    freeImgView.frame = CGRectMake(freeImgOriX, (labelHeight-6*scaleWidth)*0.5, 6*scaleWidth, 6*scaleWidth);
+    self.freeMemoryLabel.frame = CGRectMake(freeLabelOriX, 0, freeLabelWidth, labelHeight);
+//    progressView.frame = CGRectMake(memoryOriX, _memoryLabel.frame.origin.y+_memoryLabel.frame.size.height+7*scaleWidth, width-memoryOriX-edgeWidth, 4*scaleWidth);
+}
+
+- (CGFloat)properWidthOfContentLabel:(NSString *)content
+{
+    CGFloat scaleWidth = self.bounds.size.width/375;
+    CGFloat labelHeight = 24*scaleWidth;
+    
+    UIFont *font = [UIFont systemFontOfSize:12.0f];
+    CGSize size = CGSizeMake(100*scaleWidth, labelHeight);
+    NSDictionary *attDic = @{NSFontAttributeName:font};
+    
+    CGFloat width = [content boundingRectWithSize:size options:NSStringDrawingTruncatesLastVisibleLine attributes:attDic context:nil].size.width;
+    
+    return width;
+}
+
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context
+{
+    if ([object isEqual:_usedMemoryLabel] && [keyPath isEqualToString:@"text"]) {
+        usedLabelWidth = [self properWidthOfContentLabel:[change objectForKey:@"new"]];
+    }
+    else if ([object isEqual:_freeMemoryLabel] && [keyPath isEqualToString:@"text"])
+    {
+        freeLabelWidth = [self properWidthOfContentLabel:[change objectForKey:@"new"]];
+    }
+}
+
+@end
+
+#pragma mark - HomeHeadCell
+
+@implementation HomeHeadCell
+
+- (id)initWithFrame:(CGRect)frame
+{
+    self = [super initWithFrame:frame];
+    if (self) {
+        
+        UIColor *whiteColor = [UIColor whiteColor];
+        
+        self.deviceLabel = [[UILabel alloc] init];
+        self.deviceLabel.font = [UIFont systemFontOfSize:25];
+        self.deviceLabel.textColor = whiteColor;
+        
+        self.systemLabel = [[UILabel alloc] init];
+        self.systemLabel.font = [UIFont systemFontOfSize:14.0f];
+        self.systemLabel.textColor = whiteColor;
+        
+        self.shopBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+        [self.shopBtn setImage:[UIImage imageNamed:@"shopping_bag.png"] forState:UIControlStateNormal];
+        
+        [self addSubview:_deviceLabel];
+        [self addSubview:_systemLabel];
+        [self addSubview:_shopBtn];
+    }
+    
+    return self;
+}
+
+- (void)layoutSubviews
+{
+    [super layoutSubviews];
+    
+    CGFloat width = self.bounds.size.width;
+    CGFloat height = self.bounds.size.height;
+    CGFloat scale = MainScreeFrame.size.width/375;
+    CGFloat edgeWidth = 23*scale;
+    
+    self.deviceLabel.frame = CGRectMake(edgeWidth, height-52*scale, width-52*scale-38*scale, 26*scale);
+    self.systemLabel.frame = CGRectMake(edgeWidth, height-14*scale, width-46, 14*scale);
+    self.shopBtn.frame = CGRectMake(width-edgeWidth-38*scale, height-38*scale, 38*scale, 38*scale);
+}
+
+@end
+
+
+

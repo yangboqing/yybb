@@ -1,0 +1,32 @@
+{
+  "DVTSourceControlWorkspaceBlueprintPrimaryRemoteRepositoryKey" : "E01C9E3FA4C7EDD9589B8AB313FCDC9F86EFD793",
+  "DVTSourceControlWorkspaceBlueprintWorkingCopyRepositoryLocationsKey" : {
+    "03a2f70b-ae05-4086-9bec-9aeb3ce1f75c++3443" : {
+
+    }
+  },
+  "DVTSourceControlWorkspaceBlueprintWorkingCopyStatesKey" : {
+    "03a2f70b-ae05-4086-9bec-9aeb3ce1f75c++3443" : 0,
+    "E01C9E3FA4C7EDD9589B8AB313FCDC9F86EFD793" : 0
+  },
+  "DVTSourceControlWorkspaceBlueprintIdentifierKey" : "E56A7A71-D36C-4928-9EE2-AF6014B95C6E",
+  "DVTSourceControlWorkspaceBlueprintWorkingCopyPathsKey" : {
+    "03a2f70b-ae05-4086-9bec-9aeb3ce1f75c++3443" : "My_Prokect\/",
+    "E01C9E3FA4C7EDD9589B8AB313FCDC9F86EFD793" : "helloworld\/"
+  },
+  "DVTSourceControlWorkspaceBlueprintNameKey" : "browser",
+  "DVTSourceControlWorkspaceBlueprintVersion" : 204,
+  "DVTSourceControlWorkspaceBlueprintRelativePathToProjectKey" : "browser\/browser.xcodeproj",
+  "DVTSourceControlWorkspaceBlueprintRemoteRepositoriesKey" : [
+    {
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryURLKey" : "svn:\/\/192.168.100.253:9999\/repos",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositorySystemKey" : "com.apple.dt.Xcode.sourcecontrol.Subversion",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryIdentifierKey" : "03a2f70b-ae05-4086-9bec-9aeb3ce1f75c++3443"
+    },
+    {
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryURLKey" : "github.com:youqingsheng\/helloworld.git",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositorySystemKey" : "com.apple.dt.Xcode.sourcecontrol.Git",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryIdentifierKey" : "E01C9E3FA4C7EDD9589B8AB313FCDC9F86EFD793"
+    }
+  ]
+}

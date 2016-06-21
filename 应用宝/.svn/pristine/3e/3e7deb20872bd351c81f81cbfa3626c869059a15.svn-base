@@ -1,0 +1,502 @@
+//
+//  SearchListViewController.m
+//  MyHelper
+//
+//  Created by liguiyang on 15-3-5.
+//  Copyright (c) 2015年 myHelper. All rights reserved.
+//
+
+#import "SearchListViewController.h"
+#import "PublicCollectionCell.h"
+#import "LoadingCollectionCell.h" // loadingCell
+
+#import "EGORefreshTableHeaderView.h"
+#import "SearchToolBar.h"
+#import "MyServerRequestManager.h"
+#import "SearchManager.h"
+#import "appStatusManage.h"
+#import "SearchResult_DetailViewController.h"
+
+#define IDEN_SEAECHCELL @"searchCellIdentifier"
+#define IDEN_LOADINGCELL @"loadingCellIdentifier"
+
+#define TAG_NORMALCELL  1111
+#define TAG_LOADINGCELL 1112
+#define TAG_NULLCELL    1113
+
+@interface SearchListViewController ()<UICollectionViewDataSource,UICollectionViewDelegate,UICollectionViewDelegateFlowLayout,MyServerRequestManagerDelegate,EGORefreshTableHeaderDelegate>
+{
+    // 下拉刷新view
+    BOOL isLoading;
+    EGORefreshTableHeaderView *refreshHeaderView;
+    
+    NSString *searchKeyWord; // 请求列表的keyword
+    NSMutableArray *resultArray; // 搜索列表
+    NSInteger pageNumber;
+    BOOL hasNextPageFlag; // 有否有下一页数据
+    BOOL scrollEndFlag; // 已经滚动
+    BOOL failedFlag; // 已失败
+    BOOL couldScrollReqFlag; // 上拉请求
+    CollectionCellRequestStyle cellRequestStyle; //
+    LoadingCollectionCell *loadingCell;
+    
+    CollectionViewBack * _backView;
+    
+    // 搜索返回数据为空View
+    UIView *faceView;
+    UIImage *faceImg;
+    UIImageView *faceImgView;
+    UILabel *faceTipLabel;
+    
+    // 曝光相关
+    BOOL hasExposureFlag; // 曝光flag
+    SearchResult_DetailViewController *detailVC;//app详情页面
+
+}
+
+@property (nonatomic, strong) UICollectionView *tableView; // 搜索列表
+
+@end
+
+@implementation SearchListViewController
+
+- (instancetype)initWithSearchKeyWord:(NSString *)keyWord
+{
+    self = [super init];
+    if (self) {
+        resultArray = [NSMutableArray array];
+        searchKeyWord = keyWord;
+    }
+    
+    return self;
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.automaticallyAdjustsScrollViewInsets = NO;
+    self.view.backgroundColor = [UIColor whiteColor];
+    
+    // 搜索列表
+    UICollectionViewFlowLayout *flowLayout = [[UICollectionViewFlowLayout alloc] init];
+    self.tableView = [[UICollectionView alloc] initWithFrame:CGRectZero collectionViewLayout:flowLayout];
+    [self.tableView registerClass:[PublicCollectionCell class] forCellWithReuseIdentifier:IDEN_SEAECHCELL];
+    [self.tableView registerClass:[LoadingCollectionCell class] forCellWithReuseIdentifier:IDEN_LOADINGCELL];
+    self.tableView.alwaysBounceVertical = YES;
+    self.tableView.showsVerticalScrollIndicator = NO;
+    self.tableView.backgroundColor = [UIColor whiteColor];
+    self.tableView.dataSource = self;
+    self.tableView.delegate = self;
+    [self.view addSubview:_tableView];
+    
+    // EGORefreshHeaderView
+    refreshHeaderView = [[EGORefreshTableHeaderView alloc] init];
+    refreshHeaderView.egoDelegate = self;
+    [self.tableView addSubview:refreshHeaderView];
+    
+    // faceView
+    faceImg = [UIImage imageNamed:@"search_face.png"];
+    faceImgView = [[UIImageView alloc] initWithImage:faceImg];
+    faceImgView.hidden = YES;
+    
+    faceTipLabel = [[UILabel alloc] init];
+    faceTipLabel.numberOfLines = 0;
+    faceTipLabel.backgroundColor = [UIColor clearColor];
+    faceTipLabel.attributedText = [self getFaceContent];
+    faceTipLabel.hidden = YES;
+    
+    faceView = [[UIView alloc] init];
+    faceView.backgroundColor = [UIColor whiteColor];
+    faceView.hidden = YES;
+    
+    [faceView addSubview:faceImgView];
+    [faceView addSubview:faceTipLabel];
+    [self.view addSubview:faceView];
+    
+    //加载中
+    __weak id mySelf = self; // 避免循环引用
+    _backView = [CollectionViewBack new];
+    [self.view addSubview:_backView];
+    [_backView setStatus:Loading];
+    [_backView setClickActionWithBlock:^{
+        [mySelf performSelector:@selector(initRequestSearchList) withObject:nil afterDelay:delayTime];
+    }];
+    
+    [self setCustomFrame];
+    addNavigationLeftBarButton(leftBarItem_backType, self, @selector(backBtnClick:));
+    
+    // 请求准备
+    pageNumber = 1;
+    scrollEndFlag = NO;
+    failedFlag = NO;
+    couldScrollReqFlag = YES;
+    cellRequestStyle = CollectionCellRequestStyleLoading;
+    [[MyServerRequestManager getManager] addListener:self];
+    [self initRequestSearchList];
+    
+    detailVC = [[SearchResult_DetailViewController alloc]init];
+
+}
+
+- (void)viewWillAppear:(BOOL)animated
+{
+    [super viewWillAppear:animated];
+    
+    self.title = searchKeyWord;
+    for (UIView *searchBar in self.navigationController.navigationBar.subviews) {
+        if ([searchBar isKindOfClass:[SearchToolBar class]]) {
+            searchBar.hidden = YES;
+        }
+    }
+}
+
+- (void)dealloc
+{
+    loadingCell = nil;
+    searchKeyWord = nil;
+    resultArray = nil;
+    
+    self.tableView.dataSource = nil;
+    self.tableView.delegate = nil;
+    self.tableView = nil;
+}
+
+- (void)didReceiveMemoryWarning {
+    [super didReceiveMemoryWarning];
+    // Dispose of any resources that can be recreated.
+}
+
+#pragma mark Utility
+
+- (void)setCustomFrame
+{
+    CGRect fullFrame = self.view.bounds;
+    CGFloat width = fullFrame.size.width;
+    CGFloat height = fullFrame.size.height;
+    self.tableView.frame = fullFrame;
+    faceView.frame = fullFrame;
+    faceImgView.frame = CGRectMake((width-faceImg.size.width)*0.5, (height-faceImg.size.height)*0.5-40, faceImg.size.width, faceImg.size.height);
+    faceTipLabel.frame = CGRectMake(0, faceImgView.frame.origin.y+faceImgView.frame.size.height+5, width, 80);
+    
+    refreshHeaderView.frame = CGRectMake(0, -height+64, width, height);
+}
+
+- (void)backBtnClick:(id)sender
+{
+    [self.navigationController popViewControllerAnimated:YES];
+    
+    [[MyServerRequestManager getManager] removeListener:self];
+}
+
+- (void)initRequestSearchList
+{
+    pageNumber = 1;
+    [self setLoadingStatus:Loading];
+    [self requestSearchList:searchKeyWord];
+}
+
+- (void)setLoadingStatus:(Request_status)status
+{
+    _backView.status = status;
+}
+
+- (void)reloadLoadingCell:(CollectionCellRequestStyle)style
+{
+    cellRequestStyle = style;
+    [loadingCell setStyle:cellRequestStyle];
+}
+
+- (void)displayNoDataFace:(BOOL)flag
+{
+    self.tableView.hidden = flag;
+    faceView.hidden = !flag;
+}
+
+- (NSAttributedString *)getFaceContent
+{
+    NSMutableParagraphStyle *paragraphStyleOne = [[NSMutableParagraphStyle alloc] init];
+    paragraphStyleOne.alignment = NSTextAlignmentCenter;
+    paragraphStyleOne.lineSpacing = 2;
+    NSMutableParagraphStyle *paragraphStyleTwo = [[NSMutableParagraphStyle alloc] init];
+    paragraphStyleTwo.alignment = NSTextAlignmentCenter;
+    paragraphStyleTwo.lineSpacing = 1.0;
+    NSDictionary *attrDic1 = @{NSFontAttributeName:[UIFont systemFontOfSize:18.0],NSParagraphStyleAttributeName:paragraphStyleOne,NSForegroundColorAttributeName:hllColor(52, 52, 52, 1.0)};
+    NSDictionary *attrDic2 = @{NSFontAttributeName:[UIFont systemFontOfSize:16.0],NSParagraphStyleAttributeName:paragraphStyleTwo,NSForegroundColorAttributeName:hllColor(122, 122, 122, 1.0)};
+    NSAttributedString *attrStr2 = [[NSAttributedString alloc] initWithString:@"请检查内容是否拼写正确\n缩短或者换个关键词" attributes:attrDic2];
+    NSMutableAttributedString *attrStr = [[NSMutableAttributedString alloc] initWithString:@"没有找到相关内容\n" attributes:attrDic1];
+    [attrStr appendAttributedString:attrStr2];
+    
+    return attrStr;
+}
+
+- (void)hideFaceViewFlag:(BOOL)flag
+{
+    faceImgView.hidden = flag;
+    faceTipLabel.hidden = flag;
+    faceView.hidden = flag;
+}
+
+- (void)hidePullLoading
+{
+    isLoading = NO;
+    [refreshHeaderView egoRefreshScrollViewDataSourceDidFinishedLoading:_tableView];
+}
+
+
+#pragma mark - 曝光
+- (void)exposure
+{
+    NSArray *cellArray = [self.tableView visibleCells];
+    
+    NSMutableArray *appIds = [NSMutableArray array];
+    NSMutableArray *digitalIds = [NSMutableArray array];
+    
+    for (UICollectionViewCell *obj in cellArray) {
+        if (obj.tag == TAG_NORMALCELL) {
+            PublicCollectionCell *cell = (PublicCollectionCell*)obj;
+            [appIds addObject:cell.appID];
+            [digitalIds addObject:cell.appdigitalid];
+        }
+    }
+    
+    [[ReportManage instance] reportAppBaoGuang:SEARCH_APP((long)-1) appids:appIds digitalIds:digitalIds];
+}
+
+#pragma mark Request
+- (void)requestSearchList:(NSString *)keyWords
+{ // 搜索列表请求
+    [[MyServerRequestManager getManager] requestSearchList:pageNumber keyWord:keyWords isUseCache:NO userData:nil];
+    
+    // 存储搜索词记录
+    [[SearchManager getObject] saveSearchHistoryRecord:keyWords];
+}
+
+- (void)pullRequestSearchList
+{
+    [[MyServerRequestManager getManager] requestSearchList:1 keyWord:searchKeyWord isUseCache:NO userData:nil];
+}
+
+#pragma mark UICollectionViewDataSource
+- (NSInteger)numberOfSectionsInCollectionView:(UICollectionView *)collectionView
+{
+    return 1;
+}
+- (NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section
+{
+    NSInteger numberOfRows = resultArray.count;
+    return hasNextPageFlag?numberOfRows+1:numberOfRows;
+}
+- (UICollectionViewCell *)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath
+{
+    // section == 0
+    if (indexPath.row < resultArray.count) {
+        
+        PublicCollectionCell *cell = [collectionView dequeueReusableCellWithReuseIdentifier:IDEN_SEAECHCELL forIndexPath:indexPath];
+        cell.tag = TAG_NORMALCELL;
+        [cell setBottomLineLong:NO];
+        
+        NSDictionary *showCellDic = resultArray[indexPath.row];
+        //设置属性
+        cell.downLoadSource = SEARCH_APP(indexPath.row);
+        [cell setCellData:showCellDic];
+        [cell initDownloadButtonState];
+        
+        return cell;
+    }
+    
+    // loadingCell
+    loadingCell = [collectionView dequeueReusableCellWithReuseIdentifier:IDEN_LOADINGCELL forIndexPath:indexPath];
+    loadingCell.tag = TAG_LOADINGCELL;
+    [loadingCell setStyle:cellRequestStyle];
+    return loadingCell;
+}
+
+#pragma mark UICollectionViewDelegate
+- (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath
+{
+    if (indexPath.row < resultArray.count) {
+        NSDictionary *selectDic = resultArray[indexPath.row];
+        if (SHOW_REAL_VIEW_FLAG&&!DIRECTLY_GO_APPSTORE) {
+            [self pushToAppDetailViewWithAppInfor:selectDic andSoure:@"search_list"];
+        }else{
+            [[NSNotificationCenter defaultCenter] postNotificationName:OPEN_APPSTORE object:[selectDic objectForKey:APPDIGITALID]];
+        }
+        [[ReportManage instance] reportAppDetailClick:SEARCH_APP((long)indexPath.row) contentDic:selectDic];
+    }
+}
+
+#pragma mark UICollectionViewDelegateFlowLayout
+- (CGSize)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout sizeForItemAtIndexPath:(NSIndexPath *)indexPath
+{
+    return (indexPath.row < resultArray.count)?CGSizeMake(self.view.frame.size.width, 168/2*MULTIPLE):CGSizeMake(self.view.frame.size.width, 44);
+}
+
+- (CGFloat)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout*)collectionViewLayout minimumLineSpacingForSectionAtIndex:(NSInteger)section{
+    return 0;
+}
+
+- (UIEdgeInsets)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout insetForSectionAtIndex:(NSInteger)section
+{
+    return UIEdgeInsetsMake(64, 0, 49, 0);
+}
+
+#pragma mark EGORefreshHeaderViewDelegate
+- (void)egoRefreshTableHeaderDidTriggerRefresh:(EGORefreshTableHeaderView*)view
+{
+    isLoading = YES;
+    [self performSelector:@selector(pullRequestSearchList) withObject:nil afterDelay:delayTime];
+    
+}
+- (BOOL)egoRefreshTableHeaderDataSourceIsLoading:(EGORefreshTableHeaderView*)view
+{
+    return isLoading;
+}
+
+#pragma mark UIScrollViewDelegate
+
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView
+{
+    [refreshHeaderView egoRefreshScrollViewDidScroll:scrollView];
+    
+    CGFloat offset = scrollView.contentSize.height - scrollView.contentOffset.y;
+    if (couldScrollReqFlag && offset-BOTTOM_HEIGHT < MainScreen_Height - 20) {
+        scrollEndFlag = NO;
+        failedFlag = NO;
+        couldScrollReqFlag = NO;
+        [self reloadLoadingCell:CollectionCellRequestStyleLoading];
+        [self requestSearchList:searchKeyWord];
+    }
+}
+
+- (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate
+{
+    [refreshHeaderView egoRefreshScrollViewDidEndDragging:scrollView];
+    //
+    hasExposureFlag = NO;
+    
+    if (!decelerate) {
+        scrollEndFlag = YES;
+        if (failedFlag) {
+            failedFlag = NO;
+            couldScrollReqFlag = YES;
+            [self reloadLoadingCell:CollectionCellRequestStyleFailed];
+        }
+        
+        // 曝光
+        hasExposureFlag = YES;
+        [self exposure];
+    }
+}
+
+- (void)scrollViewDidEndDecelerating:(UIScrollView *)scrollView
+{
+    scrollEndFlag = YES;
+    if (failedFlag) {
+        failedFlag = NO;
+        couldScrollReqFlag = YES;
+        [self reloadLoadingCell:CollectionCellRequestStyleFailed];
+    }
+    
+    // 曝光
+    if (!hasExposureFlag) {
+        [self exposure];
+        hasExposureFlag = YES; // 加载数据完毕回弹（防曝2次）
+    }
+}
+
+-(void)scrollViewWillEndDragging:(UIScrollView *)scrollView withVelocity:(CGPoint)velocity targetContentOffset:(inout CGPoint *)targetContentOffset
+{
+    if (scrollView.contentOffset.y<-(_tableView.contentInset.top+65) && !self->isLoading) {
+        *targetContentOffset = scrollView.contentOffset;
+    }
+}
+
+
+#pragma mark MyServerRequestManagerDelegate
+- (void)searchListRequestSuccess:(NSDictionary *)dataDic pageCount:(NSInteger)pageCount keyWord:(NSString *)keyWord isUseCache:(BOOL)isUseCache userData:(id)userData
+{
+    if (![searchKeyWord isEqualToString:keyWord]) return;
+    
+    // 检测数据是否有效
+    if ([[MyVerifyDataValid instance] verifySearchResultListData:dataDic])
+    {
+        // hasNextPageFlag
+        BOOL moreFlag = [[[dataDic objectForKey:@"flag"] objectForKey:@"dataend"] isEqualToString:@"y"]?YES:NO;
+        hasNextPageFlag = moreFlag;
+        
+        //
+        if ([[dataDic objectForKey:@"data"] count] > 0) {
+            if (pageCount==1)
+            {
+                [resultArray removeAllObjects];
+                pageNumber = 1;
+                
+                if (isLoading) [self hidePullLoading];
+            }
+            [resultArray addObjectsFromArray:[dataDic objectForKey:@"data"]];
+            [self.tableView reloadData];
+            
+            pageNumber++;
+        }
+        
+        couldScrollReqFlag = YES;
+        [self displayNoDataFace:NO];
+        //
+        [self setLoadingStatus:Hidden];
+        [self hideFaceViewFlag:YES];
+        
+        // 汇报搜索日志
+        if (pageCount == 1) {
+            [[ReportManage instance] reportSearchKeyWord:keyWord];
+        }
+    }
+    else
+    {
+        // 数据是否为空
+        if ([[MyVerifyDataValid instance] verifySearchNoResultData:dataDic]) {
+            if (isLoading) {
+                [self hidePullLoading];
+            }
+            else
+            {
+                if (pageCount==1) [self displayNoDataFace:YES];
+                [self setLoadingStatus:Hidden];
+            }
+        }
+        else
+        {
+            // 搜索列表—数据有误
+            [self hideFaceViewFlag:YES];
+        }
+    }
+}
+- (void)searchListRequestFailed:(NSInteger)pageCount keyWord:(NSString *)keyWord isUseCache:(BOOL)isUseCache userData:(id)userData
+{
+    if (![searchKeyWord isEqualToString:keyWord]) return;
+    
+    if (pageCount == 1) {
+        if (!isLoading) {
+            [self setLoadingStatus:Failed];
+        }
+        [self hidePullLoading];
+    }
+    else
+    {
+        failedFlag = YES;
+        if (scrollEndFlag) {
+            scrollEndFlag = NO;
+            couldScrollReqFlag = YES;
+            [self reloadLoadingCell:CollectionCellRequestStyleFailed];
+        }
+    }
+    
+    [self hideFaceViewFlag:YES];
+}
+
+#pragma mark - 推详情
+- (void)pushToAppDetailViewWithAppInfor:(NSDictionary *)inforDic andSoure:(NSString *)source{
+    [detailVC setAppSoure:source];
+    [detailVC beginPrepareAppContent:inforDic];
+    [self.navigationController pushViewController:detailVC animated:YES];
+}
+
+@end

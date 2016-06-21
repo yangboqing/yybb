@@ -1,0 +1,610 @@
+//
+//  HomeViewController.m
+//  MyHelper
+//
+//  Created by liguiyang on 15-3-2.
+//  Copyright (c) 2015年 myHelper. All rights reserved.
+//
+
+#import "HomeViewController.h"
+#import <mach/mach.h>
+#import <AVFoundation/AVFoundation.h>
+#import "FindViewController_my.h" // 发现
+#import "WallPaperListViewController.h" // 壁纸
+#import "UtilityViewController.h" // 苹果设备维修记录、手机号码、镜子
+#import "ResourceHomeViewController.h"
+#import "MyServerRequestManager.h"
+#import "HomeToolCell.h"
+#import "FileUtil.h"
+//#import "JHAPISDK.h"
+//#import "JHOpenidSupplier.h"
+#import "MirrorViewController.h"
+#import "UIWebViewController.h"
+
+typedef enum {
+    tableTag_Top,
+    tableTag_bottom,
+}TableTag;
+
+static NSString *iden_normalCell = @"normalCellIdentifier";
+static NSString *iden_memoryCell = @"memoryCellIdentifier";
+static NSString *iden_itemCell = @"itemCellIdentifier";
+static NSString *iden_itemOneCell = @"itemOneCellIdentifier";
+
+@interface HomeViewController ()<UICollectionViewDataSource,UICollectionViewDelegate,UICollectionViewDelegateFlowLayout,WallPaperListViewDelegate,MyServerRequestManagerDelegate>
+{
+    // top homeView
+    CGFloat memoryUsed;
+    CGFloat memoryFree;
+    CGFloat storageUsed;
+    CGFloat storageFree;
+    NSArray *titleArray;
+    NSArray *imgNameArray;
+    CGFloat scale;
+    
+    // main UI
+    UICollectionView *myCollectionView;
+    
+    // top buttonView
+    BOOL showFlag;
+    ResourceHomeViewController *resourceHomeViewController;
+    FindViewController_my *discoveryVC;
+    WallPaperListViewController *wallPaperVC;
+    
+    UIStatusBarStyle statusBarStyle;
+    
+    //
+    BOOL lightFlag;
+    AVCaptureDevice *captureDevice;
+    
+    // 壁纸分类
+    WallPaperClassifyViewController *_classifyViewController;
+    MyNavigationController *_classfyNav;
+    
+    // 广告 View
+    UIImageView *adView;
+    UIButton *closeBtn;
+}
+
+@end
+
+@implementation HomeViewController
+
+#pragma mark Utility
+
+- (void)pushBtnClick:(id)sender
+{
+    if (resourceHomeViewController == nil) {
+        resourceHomeViewController = [[ResourceHomeViewController alloc] init];
+    }
+    
+    [self.navigationController pushViewController:resourceHomeViewController animated:YES];
+}
+
+- (void)changeStatusBarStyle:(UIStatusBarStyle)style
+{
+    if (_delegate && [_delegate respondsToSelector:@selector(statusBarStyle:)]) {
+        [self.delegate statusBarStyle:style];
+    }
+}
+
+- (void)removeLaunchImage
+{
+    if (_delegate && [_delegate respondsToSelector:@selector(removeLanuchImageView)]) {
+        [self.delegate removeLanuchImageView];
+    }
+    
+    // changeStatusBar
+    if (showFlag) {
+        [self changeStatusBarStyle:UIStatusBarStyleDefault];
+    }
+    else
+    {
+        [self changeStatusBarStyle:UIStatusBarStyleLightContent];
+    }
+}
+
+- (void)turnOnLight:(BOOL)flag
+{// 手电筒
+    if (![captureDevice hasTorch]) return;
+    if (flag){
+        [captureDevice lockForConfiguration:nil];
+        [captureDevice setTorchMode:AVCaptureTorchModeOn];
+        [captureDevice unlockForConfiguration];
+    }
+    else
+    {
+        [captureDevice lockForConfiguration:nil];
+        [captureDevice setTorchMode:AVCaptureTorchModeOff];
+        [captureDevice unlockForConfiguration];
+    }
+    
+    NSIndexPath *indexPath = [NSIndexPath indexPathForRow:0 inSection:1];
+    HomeToolCell *cell = (HomeToolCell *)[myCollectionView cellForItemAtIndexPath:indexPath];
+    cell.lightImgView.hidden = !flag;
+}
+
+BOOL memoryInfo(vm_statistics_data_t *vmState){
+    mach_msg_type_number_t infoCount = HOST_VM_INFO_COUNT;
+    kern_return_t kernReturn = host_statistics(mach_host_self(), HOST_VM_INFO, (host_info_t)vmState, &infoCount);
+    
+    return kernReturn == KERN_SUCCESS;
+}
+
+- (void)setMemoryInfo
+{
+    vm_statistics_data_t vmState;
+    CGFloat unit = 1024.0 * 1024.0;
+    if (memoryInfo(&vmState)) {
+        CGFloat memory = [NSProcessInfo processInfo].physicalMemory/unit;
+        CGFloat inactive = vmState.inactive_count*vm_page_size/unit;
+        CGFloat free = vmState.free_count * vm_page_size/unit;
+        
+        memoryFree = free + inactive;
+        if (memoryFree > memory) {
+            memoryFree = free;
+        }
+        
+        memoryUsed = memory - memoryFree;
+    }
+}
+
+- (void)setStorageInfo
+{
+    NSArray  *pathArr = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+    NSString *path = [pathArr objectAtIndex:0];
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSDictionary  *fileSysAttributes = [fileManager attributesOfFileSystemForPath:path error:nil];
+    
+    CGFloat unit = 1024 * 1024 * 1024;
+    storageFree = [[fileSysAttributes objectForKey:@"NSFileSystemFreeSize"] doubleValue]/unit;
+    storageUsed = [[fileSysAttributes objectForKey:@"NSFileSystemSize"] doubleValue]/unit - storageFree;
+}
+
+- (void)turnOffLight
+{
+    lightFlag = NO;
+    [self turnOnLight:NO];
+}
+
+-(BOOL)existAdURL
+{
+    BOOL existFlag = YES;
+    if ([Context defaults].adUrlStr == nil || [[Context defaults].adUrlStr isEqualToString:@""]) {
+        existFlag = NO;
+    }
+    
+    return existFlag;
+}
+
+- (void)tapGestureAction
+{
+    NSString *urlStr = [Context defaults].adUrlStr;
+    [[UIApplication sharedApplication] openURL:[NSURL URLWithString:[urlStr stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding]]];
+}
+
+- (void)closeButtonAction:(id)sender
+{
+    [adView removeFromSuperview];
+    
+    [Context defaults].adUrlStr = nil;
+    [myCollectionView reloadSections:[NSIndexSet indexSetWithIndex:1]];
+}
+
+#pragma mark Life Cycle
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    
+    
+    // 获取内存大小
+    [self setMemoryInfo];
+    [self setStorageInfo];
+//    NSString *flagStr = [[NSUserDefaults standardUserDefaults] objectForKey:@"SHOW_FLAG"];
+//    showFlag = [flagStr isEqualToString:@"YES"]?YES:NO;
+    
+    [[FileUtil instance] hasConnectedPC];
+
+    
+    showFlag = SHOW_REAL_VIEW_FLAG || HAS_CONNECTED_PC;
+    self.automaticallyAdjustsScrollViewInsets = NO;
+    statusBarStyle = UIStatusBarStyleLightContent;;
+    scale = MainScreeFrame.size.width/375;
+    titleArray = @[@"手电筒",@"高清镜子",@"应用资讯",@"高清壁纸"];
+    imgNameArray = @[@"light.png",@"mirror.png",@"discovery.png",@"wallPaper.png"];
+    
+    // home collectionView view
+    UICollectionViewFlowLayout *flowLayout = [[UICollectionViewFlowLayout alloc] init];
+    myCollectionView = [[UICollectionView alloc] initWithFrame:CGRectZero collectionViewLayout:flowLayout];
+    [myCollectionView registerClass:[HomeToolCell class] forCellWithReuseIdentifier:iden_itemCell];
+    [myCollectionView registerClass:[HomeToolCell class] forCellWithReuseIdentifier:iden_itemOneCell];
+    [myCollectionView registerClass:[HomeHeadCell class] forCellWithReuseIdentifier:iden_normalCell];
+    [myCollectionView registerClass:[HomeMemoryCell class] forCellWithReuseIdentifier:iden_memoryCell];
+    myCollectionView.dataSource = self;
+    myCollectionView.delegate = self;
+    myCollectionView.backgroundColor = [UIColor clearColor];
+    myCollectionView.backgroundView = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"homeBg.png"]];
+    [self.view addSubview:myCollectionView];
+    
+    //
+    lightFlag = NO;
+    captureDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
+    
+    // 壁纸分类
+    _classifyViewController = [[WallPaperClassifyViewController alloc]initWithNibName:nil bundle:nil];
+    _classfyNav = [[MyNavigationController alloc] initWithRootViewController:_classifyViewController];
+    
+    // 广告View
+    if ([self existAdURL]) {
+        CGFloat width = MainScreen_Width;
+        CGFloat height = 58*scale;
+        adView = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"adBanner.png"]];
+        adView.frame = CGRectMake(0, MainScreeFrame.size.height-height, width, height);
+        adView.userInteractionEnabled = YES;
+        [self.view addSubview:adView];
+        
+        closeBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+        [closeBtn setImage:[UIImage imageNamed:@"close_ad.png"] forState:UIControlStateNormal];
+        [closeBtn addTarget:self action:@selector(closeButtonAction:) forControlEvents:UIControlEventTouchUpInside];
+        [closeBtn setFrame:CGRectMake(width-60, (height-38)*0.5, 50, 38)];
+        [adView addSubview:closeBtn];
+        
+        UITapGestureRecognizer *tapGes = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tapGestureAction)];
+        [adView addGestureRecognizer:tapGes];
+    }
+    
+    
+    
+ 
+    
+    if (showFlag) {
+        resourceHomeViewController = [[ResourceHomeViewController alloc] init];
+        [self.navigationController pushViewController:resourceHomeViewController animated:NO];
+    }
+    
+    [[MyServerRequestManager getManager] addListener:self];
+    [[MyServerRequestManager getManager] requestAllSwitch];
+    
+
+    [self removeLaunchImage];
+
+    
+    
+
+
+    
+    //
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(turnOffLight) name:LIGHT_OFF object:nil];
+    
+    //左滑手势进入真实页面
+    if (SHOW_REAL_VIEW_FLAG) {
+        UISwipeGestureRecognizer *leftSwipe = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(pushBtnClick:)];
+        leftSwipe.direction = UISwipeGestureRecognizerDirectionLeft;
+        [self.view addGestureRecognizer:leftSwipe];
+    }
+    
+    
+}
+
+- (void)viewWillAppear:(BOOL)animated
+{
+    [super viewWillAppear:animated];
+    self.navigationController.navigationBarHidden = YES;
+    
+    // 状态栏
+    [self changeStatusBarStyle:statusBarStyle];
+}
+
+- (void)viewDidAppear:(BOOL)animated
+{
+    [super viewDidAppear:animated];
+}
+
+- (void)viewWillDisappear:(BOOL)animated
+{
+    [super viewWillDisappear:animated];
+    self.navigationController.navigationBarHidden = NO;
+    [self changeStatusBarStyle:UIStatusBarStyleDefault];
+}
+
+- (void)viewDidDisappear:(BOOL)animated
+{
+    [super viewDidDisappear:animated];
+}
+
+- (void)viewDidLayoutSubviews
+{
+    [super viewDidLayoutSubviews];
+    myCollectionView.frame = self.view.bounds;
+}
+
+- (void)didReceiveMemoryWarning {
+    [super didReceiveMemoryWarning];
+    // Dispose of any resources that can be recreated.
+}
+
+#pragma mark UICollectionView datasource
+- (NSInteger)numberOfSectionsInCollectionView:(UICollectionView *)collectionView
+{
+    return 2;
+}
+
+- (NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section
+{
+    return (section==0)?3:4;
+}
+
+- (UICollectionViewCell*)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath
+{
+    if (indexPath.section == 0) {
+        switch (indexPath.row) {
+            case 0:{
+                HomeHeadCell *headCell = [collectionView dequeueReusableCellWithReuseIdentifier:iden_normalCell forIndexPath:indexPath];
+                
+                headCell.deviceLabel.text = [[FileUtil instance] getDeviceName];
+                headCell.systemLabel.text = [NSString stringWithFormat:@"系统版本：iOS %@",[UIDevice currentDevice].systemVersion];
+                
+                if (showFlag) {
+                    [headCell.shopBtn addTarget:self action:@selector(pushBtnClick:) forControlEvents:UIControlEventTouchUpInside];
+                }
+                else
+                {
+                    headCell.shopBtn.hidden = YES;
+                }
+                
+                return headCell;
+            }
+                break;
+            case 1:{
+                HomeMemoryCell *memoryCell = [collectionView dequeueReusableCellWithReuseIdentifier:iden_memoryCell forIndexPath:indexPath];
+                
+                
+                memoryCell.memoryLabel.text = @"内存";
+                memoryCell.imgView.image = [UIImage imageNamed:@"memoryIcon.png"];
+                memoryCell.usedMemoryLabel.text = [NSString stringWithFormat:@"已用%.2fMB",memoryUsed];
+                memoryCell.freeMemoryLabel.text = [NSString stringWithFormat:@"可用%.2fMB",memoryFree];
+                [memoryCell setProgressValue:memoryUsed/(memoryUsed+memoryFree)];
+                
+                return memoryCell;
+            }
+                break;
+            case 2:{
+                // section == 1
+                HomeMemoryCell *storageCell = [collectionView dequeueReusableCellWithReuseIdentifier:iden_memoryCell forIndexPath:indexPath];
+                
+                storageCell.memoryLabel.text = @"存储";
+                storageCell.imgView.image = [UIImage imageNamed:@"storageIcon.png"];
+                storageCell.usedMemoryLabel.text = [NSString stringWithFormat:@"已用%.2fGB",storageUsed];
+                storageCell.freeMemoryLabel.text = [NSString stringWithFormat:@"可用%.2fGB",storageFree];
+                [storageCell setProgressValue:storageUsed/(storageFree+storageUsed)];
+                
+                return storageCell;
+            }
+                break;
+                
+            default:
+                break;
+        }
+    }
+    
+    
+    // section == 1
+    HomeToolCell *toolCell = [collectionView dequeueReusableCellWithReuseIdentifier:iden_itemCell forIndexPath:indexPath];
+    
+    toolCell.iconView.image  = [UIImage imageNamed:imgNameArray[indexPath.row]];
+    toolCell.titleLabel.text = titleArray[indexPath.row];
+    
+    switch (indexPath.row) {
+        case 0:
+            [toolCell setHeadLabelPosition:positionType_head];
+            [toolCell setSideLabelPosition:positionType_sideRightUp];
+            break;
+            
+        case 1:
+            [toolCell setHeadLabelPosition:positionType_head];
+            [toolCell setSideLabelPosition:positionType_sideLeftUp];
+            break;
+            
+        case 2:
+            [toolCell setHeadLabelPosition:positionType_headRight];
+            [toolCell setSideLabelPosition:positionType_sideRight];
+            break;
+            
+            
+        case 3:
+            if (!showFlag) {
+                toolCell.iconView.image = nil;
+                toolCell.titleLabel.text = @"";
+            }
+            [toolCell setHeadLabelPosition:positionType_headRight];
+            [toolCell setSideLabelPosition:positionType_sideRightDown];
+            break;
+            
+        default:
+            break;
+    }
+    
+    return toolCell;
+}
+
+#pragma mark UICollectionView delegate
+- (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath
+{
+    if (indexPath.section== 1) {
+        switch (indexPath.row) {
+            case 0:{
+                // 手电筒
+                lightFlag = !lightFlag;
+                [self turnOnLight:lightFlag];
+            }
+                break;
+            case 1:{
+                // 高清镜子
+                lightFlag = NO;
+                [self turnOnLight:NO];
+                MirrorViewController *mirrorViewController = [[MirrorViewController alloc]init];
+                [self.navigationController pushViewController:mirrorViewController animated:YES];
+            }
+                break;
+            case 2:{
+                // 资讯
+                static dispatch_once_t onceToken;
+                dispatch_once(&onceToken, ^{
+                    discoveryVC = [[FindViewController_my alloc] init];
+                    [discoveryVC initilizationChoiceRequest];
+                });
+                
+                [self.navigationController pushViewController:discoveryVC animated:YES];
+            }
+                break;
+            case 3:{
+                if (showFlag) {
+                    // 高清壁纸
+                    static dispatch_once_t onceToken;
+                    dispatch_once(&onceToken, ^{
+                        wallPaperVC = [[WallPaperListViewController alloc] initWithLeftType:wallPaper_presentClassfyView];
+                        [wallPaperVC initWallPaperList:nil dataManage:nil AndTitle:@"壁纸"];
+                        wallPaperVC.delegate = self;
+                        wallPaperVC.navigationController = self.navigationController;
+                        [wallPaperVC initRequest];
+                    });
+                    [self.navigationController pushViewController:wallPaperVC animated:YES];
+                }
+            }
+                break;
+                
+            default:
+                break;
+        }
+    }
+}
+
+#pragma mark UICollectionViewDelegateLayout
+- (CGSize)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout sizeForItemAtIndexPath:(NSIndexPath *)indexPath
+{
+    CGFloat offsetY = 0;
+    if (iPhone6Plus) offsetY = 5;
+    CGFloat height = [self existAdURL]?115+offsetY:140;
+    CGFloat width = self.view.bounds.size.width;
+    CGFloat itemHeight = height*scale;
+    CGSize size = CGSizeMake(width*0.5, itemHeight);
+    if (indexPath.section == 0) {
+        if (indexPath.row==0) size = CGSizeMake(width, 100*scale);
+        else size = CGSizeMake(width, 35*scale);
+    }
+    return size;
+}
+
+- (UIEdgeInsets)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout insetForSectionAtIndex:(NSInteger)section
+{
+    CGFloat offset = (iPhone4S || iPhone4)?58*scale:0;
+    if (![self existAdURL]) offset = 0;
+    if (section == 1) {
+        return UIEdgeInsetsMake(28, 0, offset, 0);
+    }
+    
+    return UIEdgeInsetsZero;
+}
+
+- (CGFloat)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout minimumInteritemSpacingForSectionAtIndex:(NSInteger)section
+{
+    if (section == 0) {
+        return 22;
+    }
+    
+    return 0.0;
+}
+
+- (CGFloat)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout minimumLineSpacingForSectionAtIndex:(NSInteger)section
+{
+    if (section == 0) {
+        return 22;
+    }
+    
+    return 0.0f;
+}
+
+#pragma mark WallPaperListViewDelegate
+-(void)presentToClassifyView
+{
+    [self presentViewController:_classfyNav animated:YES completion:^{
+        
+    }];
+}
+
+#pragma mark MyServerRequestDelegate
+
+
+- (void)requestAllSwitchSuccess:(NSDictionary *)switches{
+    BOOL flag = NO;
+    
+    
+    //  "displayContent": "display", 是否显示真是内容,display:显示,hide:隐藏
+    flag = [[switches objectForKey:@"displayContent"] isEqualToString:@"display"]?YES:NO;
+    if (flag) {
+//        showFlag = flag;
+        [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithBool:flag] forKey:@"SHOW_FLAG"];
+    }
+    
+    if (flag&&[self.navigationController.visibleViewController isKindOfClass:[self class]]) {
+        resourceHomeViewController = [[ResourceHomeViewController alloc] init];
+        [self.navigationController pushViewController:resourceHomeViewController animated:NO];
+    }
+    
+    
+    // "appstoreSwitch": "on",  是否开启从appstore下载 on:开启,off:关闭
+    flag = [[switches objectForKey:@"appstoreSwitch"] isEqualToString:@"on"]?YES:NO;
+    [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithBool:flag] forKey:@"directlygoappstore"];
+    
+    
+    // "enterpriseSwitch": "off", 是否开启企签下载,on:开启,off:关闭
+    flag = [[switches objectForKey:@"enterpriseSwitch"] isEqualToString:@"on"]?YES:NO;
+    [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithBool:flag] forKey:@"euswich"];
+    
+
+    
+    
+}
+- (void)requestAllSwitchFailed{
+    [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithBool:NO] forKey:@"euswich"];
+    [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithBool:NO] forKey:@"directlygoappstore"];
+
+}
+//- (void)realViewSwitchRequestSuccess:(BOOL)flag
+//{
+//    showFlag = flag;
+////    NSString *obj = flag?@"YES":@"NO";
+//    [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithBool:flag] forKey:@"SHOW_FLAG"];
+//    
+//    
+////    statusBarStyle = UIStatusBarStyleLightContent;
+//}
+//
+//- (void)realViewSwitchRequestFailed
+//{
+//    if (showFlag) {
+//        resourceHomeViewController = [[ResourceHomeViewController alloc] init];
+//        [self.navigationController pushViewController:resourceHomeViewController animated:NO];
+//    }
+//    
+////    
+////    [self performSelector:@selector(removeLaunchImage) withObject:nil afterDelay:0.5];
+////    
+////    statusBarStyle = UIStatusBarStyleLightContent;
+//}
+//
+//- (void)requestEUSwichCSuccess:(BOOL)flag{
+//    [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithBool:flag] forKey:@"euswich"];
+//}
+//- (void)requestEUSwichFailed{
+//    [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithBool:NO] forKey:@"euswich"];
+//}
+//
+////是否直接跳Store
+//- (void)requestDirectlyGoAppStoreSwitchSuccess:(BOOL)flag{
+//    [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithBool:flag] forKey:@"directlygoappstore"];
+//}
+//- (void)requestDirectlyGoAppStoreSwitchFailed{
+//    [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithBool:NO] forKey:@"directlygoappstore"];
+//
+//}
+@end

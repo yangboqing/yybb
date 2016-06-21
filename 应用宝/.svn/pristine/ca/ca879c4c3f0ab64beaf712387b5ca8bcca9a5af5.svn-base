@@ -1,0 +1,149 @@
+//
+//  AppTableViewController.m
+//  browser
+//
+//  Created by liguiyang on 14-6-10.
+//
+//
+
+#if ! __has_feature(objc_arc)
+#error This file must be compiled with ARC. Either turn on ARC for the project or use -fobjc-arc flag
+#endif
+
+#import "AppTableViewController_my.h"
+#import "PublicCollectionCell.h"
+#import "DlfromDefine.h"
+#import "SearchResult_DetailViewController.h"
+#import "AppStatusManage.h"
+
+@interface AppTableViewController_my ()
+{
+    SearchResult_DetailViewController *detailVC;//app详情页面
+    
+}
+@property (nonatomic, strong) NSArray *appList;
+@property (nonatomic, strong) NSString *appFromSource; // lunbo/list
+@end
+
+@implementation AppTableViewController_my
+
+static NSString * const reuseIdentifier = @"Cell";
+
+
+- (id)initWithCollectionViewLayout:(UICollectionViewLayout *)layout
+{
+    self = [super initWithCollectionViewLayout:layout];
+    if (self) {
+        
+    }
+    return self;
+}
+
+
+#pragma mark - Life Cycle
+- (void)viewDidLoad
+{
+    [super viewDidLoad];
+    self.view.backgroundColor=[UIColor grayColor];
+    
+    if (IOS7) {
+        self.edgesForExtendedLayout = UIRectEdgeNone;
+    }
+    self.collectionView.scrollEnabled = NO;
+    self.collectionView.backgroundColor=[UIColor clearColor];
+    [self.collectionView registerClass:[PublicCollectionCell class] forCellWithReuseIdentifier:reuseIdentifier];
+    detailVC = [[SearchResult_DetailViewController alloc]init];
+
+}
+
+- (void)didReceiveMemoryWarning
+{
+    [super didReceiveMemoryWarning];
+}
+
+-(void)reloadAppTableView:(NSArray *)appArray withFromSource:(NSString *)fromSource{
+    _dataAry=appArray;
+    [self.collectionView reloadData];
+}
+
+
+
+#pragma mark <UICollectionViewDataSource>
+
+- (NSInteger)numberOfSectionsInCollectionView:(UICollectionView *)collectionView {
+    return 1;
+}
+- (NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section{
+
+    return _dataAry.count;
+}
+
+- (UICollectionViewCell *)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath {
+        PublicCollectionCell *cell= [collectionView dequeueReusableCellWithReuseIdentifier:reuseIdentifier forIndexPath:indexPath];
+        
+        cell.backgroundColor = [UIColor whiteColor];
+        NSDictionary *showCellDic = [_dataAry objectAtIndex:indexPath.row];
+        [cell setBottomLineLong:NO];
+    
+//    if (![[MyVerifyDataValid instance] verifyFindAppsData:showCellDic]) return; // 数据有效性检测
+    if ([[MyVerifyDataValid instance]verifyFindAppsData:showCellDic]) {
+        
+        cell.downLoadSource = HOME_PAGE_RECOMMEND_MY(indexPath.section, indexPath.row);
+        [cell setCellData:showCellDic];
+        [cell initDownloadButtonState];
+
+    }
+    //设置属性
+        return cell;
+        
+    
+}
+
+-(CGSize)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout sizeForItemAtIndexPath:(NSIndexPath *)indexPath
+{
+ //MainScreen_Width*106/375
+    return CGSizeMake(MainScreen_Width, (indexPath.row<_dataAry.count)?168/2*MULTIPLE :44);
+//    return cgsizema
+}
+
+- (CGFloat)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout*)collectionViewLayout minimumLineSpacingForSectionAtIndex:(NSInteger)section{
+    return 0;
+}
+
+
+- (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath
+{
+    PublicCollectionCell *cell = (PublicCollectionCell *)[collectionView cellForItemAtIndexPath:indexPath];
+
+    
+    NSString *source =DEVELOPER_OTHER_APP(cell.appID, (long)indexPath.row);
+//汇报点击
+    NSDictionary*dic=_dataAry[indexPath.row];
+//    [[ReportManage instance] reportAppDetailClick:source contentDic:_dataAry[indexPath.row]];
+    if (SHOW_REAL_VIEW_FLAG&&!DIRECTLY_GO_APPSTORE) {
+        [self pushToAppDetailViewWithAppInfor:dic andSoure:source];
+    }else{
+        [[NSNotificationCenter  defaultCenter] postNotificationName:OPEN_APPSTORE object:cell.appdigitalid];
+    }
+    
+    [[ReportManage instance]reportOtherDetailClick:source appid:[dic objectForKey:@"appid"]];
+
+}
+
+
+#pragma mark - 推详情
+- (void)pushToAppDetailViewWithAppInfor:(NSDictionary *)inforDic andSoure:(NSString *)source{
+    [detailVC setAppSoure:source];
+    [detailVC beginPrepareAppContent:inforDic];
+    [self.navigationController pushViewController:detailVC animated:YES];
+}
+
+#pragma mark - Life Cycle
+
+-(void)dealloc
+{
+    self.appList = nil;
+    self.appFromSource = nil;
+}
+
+@end

@@ -1,0 +1,455 @@
+//
+// Prefix header for all source files of the 'browser' target in the 'browser' project
+//
+
+#import <Availability.h>
+
+#ifndef __IPHONE_4_0
+#warning "This project uses features only available in iOS SDK 4.0 and later."
+#endif
+
+#ifdef __OBJC__
+    #import <UIKit/UIKit.h>
+    #import <Foundation/Foundation.h>
+    #import <QuartzCore/CoreAnimation.h>
+    #import <AdSupport/AdSupport.h>
+    #import <SystemConfiguration/SystemConfiguration.h>
+    #import <MobileCoreServices/MobileCoreServices.h>
+    #import "DlfromDefine.h"//下载来源统计
+    #import"ReportManage.h"
+    #import <AssetsLibrary/AssetsLibrary.h>
+#endif
+
+
+#ifdef __OBJC__
+/* ...other references... */
+
+// 自定义类导入
+#import "ReportManage.h"
+#import "DlfromDefine.h"
+#import "MyVerifyDataValid.h"
+#import "Context.h"
+
+
+#import "StaticImage.h"
+#import "RegExCategories.h"
+#import "CountConvert.h"
+#import "XXLog.h"
+#import "NSLogEx.h"
+#import "UIImageView+WebCache.h"
+
+#import "SettingPlistConfig.h"
+#import "NSDictionary+noNIL.h"
+#import "LocalImageManager.h"
+
+#import "encryAppID.h"
+
+
+#endif
+
+
+
+#define URL_TYPE  0  //0 正式; 1 安全；2 开发测试
+
+
+#define PUSH_ALERTVIEW_TAG 666
+#define TAG_ALERTVIEW_INSTALLSFIX 34341 //是否安装自身修复
+#define hllColor(r,g,b,a) [UIColor colorWithRed:(float)r/255.0 green:(float)g/255.0 blue:(float)b/255.0 alpha:(float)a]
+
+#define APP_ADD_FAIL @"应用添加失败"
+#define APP_DOWNLOAD_PARSE @"下载应用失败,请检查网络重试" //@"应用下载文件解析失败"
+#define GET_HTTP_IPA_URL_FAIL @"下载应用失败,请检查网络重试"//@"解析下载地址格式错误"
+#define GET_HTTP_PLIST_URL_FAIL @"解析配置文件失败"//@"下载配置文件错误"
+
+#define SETTING_FILE_NAME @"settingFile_iphone.plist"
+#define WXAppID @"wxbc75085b4a826686"
+//#define WXContent @"最新的免费资源，最实用的各种工具，最专业的手机管家！尽在快用 https://itunes.apple.com/cn/app/kuai-yong-shou-ji-zhu-shou/id962614377?l=en&mt=8"
+#define WXContent @"最新的免费资源，最实用的各种工具，最专业的手机管家！尽在快用。"
+#define kAppKey         @"3968839646"
+
+#define LOADIMAGE(file,ext) [UIImage imageWithContentsOfFile:[[NSBundle mainBundle]pathForResource:file ofType:ext]]
+#define IOS7 ([[[UIDevice currentDevice]systemVersion] floatValue] >= 7.0)
+#define IOS8 ([[[UIDevice currentDevice]systemVersion] floatValue] >= 8.0)
+
+#define MainScreeFrame [[UIScreen mainScreen] bounds]
+#define MainScreen_Y [[[UIDevice currentDevice] systemVersion] floatValue] >= 7 ?20:0
+#define MainScreen_Width  [[UIScreen mainScreen] bounds].size.width
+#define MainScreen_Height [[UIScreen mainScreen] bounds].size.height
+
+#define INT_SYSTEMVERSION [[[UIDevice currentDevice] systemVersion] intValue]
+
+#define GET_SYSTEM_LANGUAGE [[[NSUserDefaults standardUserDefaults] objectForKey:@"AppleLanguages"] objectAtIndex:0];
+//判断是否是iphone5
+
+#define iPhone5 ([UIScreen instancesRespondToSelector:@selector(currentMode)] ? CGSizeEqualToSize(CGSizeMake(640, 1136), [[UIScreen mainScreen] currentMode].size) : NO)
+//颜色定义
+#define TOP_RED_COLOR [UIColor colorWithRed:230.0/255.0 green:73.0/255.0 blue:57.0/255.0 alpha:1]
+#define TOP_RED_COLOR_SELECTED [UIColor colorWithRed:161.0/255.0 green:40.0/255.0 blue:27.0/255.0 alpha:1]
+#define BACKGROUND_COLOR [UIColor colorWithRed:81.0/255.0 green:81.0/255.0 blue:81.0/255.0 alpha:0.7]
+#define GRAY_TEXT_COLOR  [UIColor colorWithRed:153.0/255.0 green:153.0/255.0 blue:153.0/255.0 alpha:1.0]
+#define WHITE_BACKGROUND_COLOR [UIColor colorWithRed:250.0/255.0 green:250.0/255.0 blue:250.0/255.0 alpha:1.0]
+#define SEPERATE_LINE_COLOR [UIColor colorWithRed:200.0/255.0 green:200.0/255.0 blue:200.0/255.0 alpha:1.0]
+#define POPVIEW_BACKGROUND_COLOR [UIColor colorWithRed:0.0/255.0 green:0.0/255.0 blue:0.0/255.0 alpha:0.5]
+#define CONTENT_COLOR [UIColor colorWithRed:60.0/255.0 green:60.0/255.0 blue:60.0/255.0 alpha:1]
+#define CONTENT_BACKGROUND_COLOR [UIColor colorWithRed:240.0/255.0 green:240.0/255.0 blue:240.0/255.0 alpha:1]
+#define NAME_COLOR  [UIColor colorWithRed:50.0/255.0 green:50.0/255.0 blue:50.0/255.0 alpha:1]
+#define OTHER_TEXT_COLOR  [UIColor colorWithRed:100.0/255.0 green:100.0/255.0 blue:100.0/255.0 alpha:1]
+#define MY_YELLOW_COLOR [UIColor colorWithRed:244.0/255.0 green:139.0/255.0 blue:0.0/255.0 alpha:1]
+#define MY_BLUE_COLOR [UIColor colorWithRed:95.0/255.0 green:82.0/255.0 blue:160.0/255.0 alpha:1]
+
+#define NEWYEAR_RED IOS8?[UIColor colorWithRed:230.0/255.0 green:75.0/255.0 blue:60.0/255.0 alpha:0.85]:[UIColor colorWithRed:232.0/255.0 green:100.0/255.0 blue:88.0/255.0 alpha:1]
+
+// 导航栏按钮的Tag值
+#define TAG_UPDATEBUTTON_CLICK 1122
+#define TAG_DOWNLOADBUTTON_CLICK 1123
+#define TAG_OTHERBUTTON_CLICK 1124
+//cell高度
+#define PUBLICNOMALCELLHEIGHT 88
+#define PUBLICVIEWCELLHEIGHT 215
+
+#define BOTTOM_WIDTH 128/2 // MainScreen_Width*0.2
+#define BOTTOM_HEIGHT 98/2 // MainScreen_Width*49/320
+
+#define delayTime 0.5 // 下拉刷新回收时间、弹出失败框时间
+
+//推荐\下载数量转换为中文计数
+#define CountConver(count) ([[CountConvert defaultConvert] convert:count])
+
+//反馈上报日志地址
+#if (URL_TYPE == 1)
+#define ADVISE_PAGE_REPORT_URL [NSURL URLWithString:@"http://iphonetwo_s.kuaiyong.com/suggestion.php"]
+#else
+#define ADVISE_PAGE_REPORT_URL [NSURL URLWithString:@"http://iphonetwo.kuaiyong.com/suggestion.php"]
+#endif
+
+
+
+
+
+//Iphone请求地址
+#if (URL_TYPE == 2)
+//内网
+#define IPHONE_REQUEST_ADDRESS @"http://117.121.11.30:9081/i/i.php?d="
+#define IPHONE_REQUEST_ADDRESS_QIQIAN @"http://117.121.11.30:9081/i/q.php?d="
+
+#elif (URL_TYPE == 0)
+//外网
+#define IPHONE_REQUEST_ADDRESS @"http://iphonetwo.kuaiyong.com/i/i.php?d="
+#define IPHONE_REQUEST_ADDRESS_QIQIAN @"http://iphonetwo.kuaiyong.com/i/q.php?d="
+#else
+//安全
+#define IPHONE_REQUEST_ADDRESS @"http://iphonetwo_s.kuaiyong.com/i/i.php?d="
+#define IPHONE_REQUEST_ADDRESS_QIQIAN @"http://iphonetwo_s.kuaiyong.com/i/q.php?d="
+#endif
+
+
+
+
+//获取3K下载地址域名
+#define GET_KKK_IPADOWNURL @"http://f_tt.iphonespirit.com/i/i.php?r=config/UpateForLite"
+
+#if (URL_TYPE == 1)
+//获取AU下载地址域名
+#define GET_AU_APPINFO_HEAD @"http://ftt.mysjzs.com/appDetail/geteuplist?cry="//@"http://iphonetwo_s.kuaiyong.com/i/i.php?d="
+#else
+#define GET_AU_APPINFO_HEAD @"http://ftt.mysjzs.com/appDetail/geteuplist?cry="//@"http://iphonetwo.kuaiyong.com/i/i.php?d="
+#endif
+
+
+//根据appid获取其在库里的下载plist
+#if (URL_TYPE == 1)
+#define SERVICE_URL_STR @"http://f_kyadvwallstat_s.bppstore.com/interface/appid2plist.php"
+#else
+#define SERVICE_URL_STR @"http://f_kyadvwallstat.bppstore.com/interface/appid2plist.php"
+#endif
+
+
+//更新日志地址
+#if (URL_TYPE == 1)
+#define UPDATA_REPORT_ADDRESS @"http://iphonetwo_s.kuaiyong.com/spread_log.php"
+#else
+#define UPDATA_REPORT_ADDRESS @"http://iphonetwo.kuaiyong.com/spread_log.php"
+#endif
+
+
+//礼包地址
+#define GIFT_URL @"http://m.7659.com/ky/gift.html"
+
+
+
+//上报下载和安装日志
+
+#if (URL_TYPE == 1)
+#define DOWN_LOG_URL  @"http://f_txzlog_s.iphonespirit.com:7658/report.php?crypt="
+#else
+#define DOWN_LOG_URL  @"http://f_txzlog.iphonespirit.com:7658/report.php?crypt="
+#endif
+
+//分享的webpageurl域名
+#if (URL_TYPE == 1)
+#define SINA_SHARE_URL @"http://iphoneapp_s.kuaiyong.com/s/"
+#else
+#define SINA_SHARE_URL @"http://iphoneapp.kuaiyong.com/s/"
+#endif
+/**************************************************/
+//分享webpageurl域名暂时写为MY官网
+#define WEIXIN_SHARE_URL @"http://www.mysjzs.com"
+/**************************************************/
+
+//请求iPad下载地址
+#if (URL_TYPE == 1)
+#define IPAD_DOWN_URL_STR @"http://iphoneapp_s.kuaiyong.com/kysdk"
+#else
+#define IPAD_DOWN_URL_STR @"http://iphoneapp.kuaiyong.com/kysdk"
+#endif
+
+
+
+
+
+//区分列表的来源类型
+#define LIST_TARGET_MARKET @"market"
+#define LIST_TARGET_SEARCH @"search"
+
+
+// 友盟AppKey
+#define UMKEY @"5371ba0a56240b47b10687e8"
+
+#define  OBJ_NOT_NIL(x) x==nil?@"":x
+
+
+//更改下载按钮状态
+
+#define RELOADDOWNLOADCOUNT @"reloadDownloadCount" //下载中列表数量发生变化
+
+#define APPLICATIONS_CHANGED_NOTIFICATION @"APPLICATIONS_CHANGED_NOTIFICATION" //手机应用发生改变(安装，卸载等)
+#define CHANGEBUTTONSTATETODOWN @"ChangeButtonStateToDown" //完成中数量发生变化
+#define CHANGE_CHECKEDITVIEW @"changeCheckEditView"  //更改管理页面全选反选按钮状态
+#define REMOVEUPDATADOWNING @"removeUpdataDowning" //删除一个同时在更新列表和下载中（完成中）列表的应用
+#define DOWNLOADCOMPLETE @"downLoadComplete" //下载完成
+
+//网络加载提示
+#define LOAD_ING @"努力加载中，请稍候..."  //页面请求
+#define LOAD_FAILD @"加载失败 点击重新加载"  //
+#define FRASHLOAD_ING @"加载中 请稍候..."  //上拉刷新
+#define FRASHLOAD_FAILD @"网络有点堵塞，试试再次上拉"  //
+
+//推荐提示
+#define ALREADY_PROMOTED @"您已经推荐过了哦"
+#define PROMOTE_SUCCESS @"推荐成功"
+//仅在WIFI下载的提示
+#define ON_WIFI_DOWN_TIP @"您目前在非WIFI环境下,下载应用将耗费手机流量"//@"请在设置中关闭\"仅在WIFI环境下载\"后，再次尝试"
+#define NO_WIFI_DOWN_TAG 987
+
+//是否 NSString对象
+#define IS_NSSTRING(obj)        [obj isKindOfClass: [NSString class]]
+//是否 NSDictionary对象
+#define IS_NSDICTIONARY(obj)    [obj isKindOfClass: [NSDictionary class]]
+//是否 NSArray对象
+#define IS_NSARRAY(obj)    [obj isKindOfClass: [NSArray class]]
+//是否是NSNumber
+#define IS_NSNUMBER(obj)    [obj isKindOfClass: [NSNumber class]]
+
+
+
+
+
+//显示隐藏底部按钮
+#define HIDETABBAR @"hideTabBar"
+//刷新下载中列表
+#define RELOADDOWNLOADINGTABLEVIEW @"reloadDownloadingTableView"
+//打开闪退修复帮助流程页
+#define OPENLESSON @"openLesson"
+//应用修复列表 (下载管理)
+#define OPEN_REPAIRAPP_DOWNLOAD @"open_repairApp_downloadManager"
+//应用修复列表刷新
+#define REFRESH_REPAIRAPP_ALL @"refresh_repairTable_All"
+//应用修复列表状态
+#define CHANGE_REPAIRCELL_STATE @"change_repairCell_state"
+//跳转到“管理”-下载中页面通知
+#define JUMP_DOWNLOADING @"jumpToDownloadingView"
+// 跳装至市场首页
+#define JUMP_HOMEPAGE @"jumpToHomePage"
+//安装成功后删除Ipa
+#define DELETE_APP_AFTER_INSTALL @"deleteAppAfterInstall"
+//刷新更新列表
+#define RELOAD_UPDATA_AFTER_SCREEN @"updataAfterScreen"
+//获取通知检查更新列表数量
+#define RELOAD_UPDATE_COUNT @"reloadUpdataCount"
+//刷新下载已下载更新界面，更换界面的安装状态
+#define UPDATE_DOWNLOAD_TOPVIEW_COUNT @"updateDownloadTopViewCount"
+//下载权限变更提示框
+#define BACKGROUND_DOWNLOAD_ALERTVIEW @"backgroundDownloadAlertVIew"
+//隐藏分类页
+#define HIDE_CATEGORY @"hideCategory"
+//显示热词
+#define SHOW_HOT_WORDS @"showHotWords"
+//显示分类列表
+#define SHOW_CATEGORY_LIST @"showCategoryList"
+//添加了一个应用到下载中列表--用于通知发现页进行刷新
+#define ADD_APP_DOWNLOADING @"addAppDownloading"
+//新添加了一个下载后弹出框告知
+#define ADD_NEW_DOWNLOAD_ITEM @"addnewdownloaditem"
+//au下载失败
+#define AU_DOWNLOAD_FAIL @"audonwloadfail"
+
+//my新增
+#define DELETE_APP_BECAUSE_DOWNLOAD_FAIL @"deleteAppFromDownloadingListBecauseFail"
+
+//启动或者禁用全部更新按钮
+#define IS_DISABLE_UPDATE_BUTTON @"disableUpdataBtn"
+//传参数进行全部更新
+#define PASS_UPDATE_TO_DOWNLOADING @"passUpdataToDowning"
+//更新中的版本大于已下载中的，故若更新时则先删除已下载中的
+#define DELETE_DOWNLOAD_BECAUSE_UPDATE @"deleteDownedBecauseUpdata"
+//更新中的版本大于下载中的，故若更新则先删除下载中的
+#define DELETE_DOWNLAODING_BECAUSE_UPDATE @"deleteDowningBecauseUpdata"
+//通知界面显示底部加入到下载列表和已下载完成的提示条
+#define SHOW_ALREADY_JOIN_DOWNING_LIST @"showAlreadyJoinDowningList"
+//若更新的应用已经在下载中列表里，再点更新，如果下载中列表中此应用为错误或者暂停，此应用则继续开始下载
+#define START_DOWNLOADING_FOR_UPDATE @"StartDowningForUpdata"
+//显示激活通知
+#define SHOW_ACTIVE_NOTICE @"showActiveNotice"
+//显示和隐藏搜索输入框
+#define HIDE_SEARCH_ZOOM_VIEW @"hideSearchZoomView"
+//弹出是否已经推荐或者推荐成功的弹框，会自动消失
+#define PROMOTE_INFO_SHOW @"promoteInforShow"
+//本地推送确认按钮-点本地推送后打开下载管理页面，打开已下载页面
+#define LOCAL_PUSH_CLICK_OK @"localPushClickOk"
+//本地推送应用详情/活动详情/专题列表
+#define LOCAL_PUSH_DETAIL @"localPushDetail"
+//解决热词菊花后台到前台不停转bug
+#define CALL_MOTION_ENDED_ACTION @"callMotionEndedAction"
+
+//本地推送内容
+#define LOCAL_PUSH_APP @"app"
+#define LOCAL_PUSH_HUODONG @"huodong"
+#define LOCAL_PUSH_SPECIAL @"special"
+//远程推送
+#define REMOTE_PUSH @"remotePush"
+#define REMOTE_PUSH_APP @"app"
+#define REMOTE_PUSH_HUODONG @"huodong"
+#define REMOTE_PUSH_SPECIAL @"special"
+//开屏图通知
+#define CLICK_KAIPING @"click_kaiping"
+#define ACCOUNTPASSWORD @"accountpassword"
+#define SAVE_ACCOUNT @"saveaccount"
+#define SAVE_PASSWORD @"savepassword"
+#define CLICK_CANCELLATION @"cancellationaccount"
+#define CLICK_ACCOUNT @"clickaccount"
+
+#define WHITE_COLOR [UIColor whiteColor]
+#define BLACK_COLOR [UIColor blackColor]
+#define CLEAR_COLOR [UIColor clearColor]
+#define IPHONE6_XISHU (MainScreen_Width/320.0)
+
+#define SHOW_HIDDEN_LOGIN_LOADING @"loginloading"
+#define LOCAL_PUSH_SPECIAL @"special"
+
+#define PHONE_SCALE_PARAMETER (MainScreen_Width/320.0)
+
+#define DIDI_URL @"http://diditaxi.com.cn/activity/hongbao/op_redpacket/home?channel=244fbfa1e438bc100e0fbb35c1bab128"
+
+#define SAVE_ACCOUNTS @"saveaccounts"
+
+#define OPEN_CLOSE_DIDI_WEB @"openclosedidiweb"
+
+#define APP_PRICE_HEAD @"auprice"
+
+#define LOGIN_SWITCH @"loginswitch"
+
+
+#define APPLEID_ACCOUNT_INFO @"appleidaccountinfo"
+#define APPLE_ACCOUNT_KEY @"kuaiyong@wangyi"
+/*
+ 
+ name:邮箱，如果下行数据的name值是空，则表示不使用appstore下载策略;
+ epwd:邮箱密码；
+ pwd:帐号密码；
+ flag:帐号标记，0：裸帐号，则epwd和pwd都有值
+ 1：可用帐号，则epwd是空；
+ q1:问题一的选择项；
+ a1:问题一的答案；
+ q2:问题二的选择项；
+ a2:问题二的答案；
+ q3:问题三的选择项；
+ a3:问题三的答案；
+ phone:手机号；
+ fn:姓
+ ln:名
+ 
+ */
+
+#define KKK_DOWNLOAD_ADDRESS @"kkkdownload"
+
+#define IS_QUIT_BINDING_PAGE @"isquitbindingpage"
+#define QUIT_BINDING_PAGE @"quitbindingpage"
+#define SHOW_ACCOUNT_LIST @"showaccountlist"
+#define REQUEST_APPID_RESULT @"request_appid_result"
+#define COPY_ACCOUNT_INFOR @"copy_account_infor"
+#define WILL_GIVE_ACCOUNT @"WILL_GIVE_ACCOUNT"//@"on"or"off"
+#define SAVED_ACCOUNT_DATE @"SAVED_ACCOUNT_DATE" 
+
+#define HAS_BIND_APPLEID @"HAS_BIND_APPLEID"
+#define IS_BINDING_FREE_APPLEID @"IS_BINDING_FREE_APPLEID"
+
+//收到消息推送（百度推送）
+#define RECEIVE_NOTIFICATION_PUSH @"RECEIVE_NOTIFICATION_PUSH"
+
+
+#define OPEN_APPSTORE @"open_appstore"
+#define SPECIALID     @"special_auto_id"
+
+#define delayTime 0.5 // 下拉刷新回收时间、弹出失败框时间
+#define LOAD_ING @"努力加载中，请稍候..."  //页面请求
+#define LOAD_FAILD @"加载失败 点击重新加载"
+#define FRASHLOAD_ING @"加载中 请稍候..."  //上拉刷新
+#define FRASHLOAD_FAILD @"网络有点堵塞，试试再次上拉"
+#define NOT_SEARCH_RESULT @"请输入搜索App关键字" //搜索栏里为空的默认字符串
+
+#define RELOADING @"reloading" // 解决loading界面推到后台再显示，loading动画消失的问题
+#define LIGHT_OFF @"light_off" // 解决手电筒开时，进入后台再回到前台开灯标识显示错误问题
+#define HIDETABBAR @"hideTabBar" // 隐藏底端TabBar
+#define UPDATE_VERSION @"updateSelfVersion" // 检测更新
+#define SHOW_SEARCHVIEW   @"pushSearchViewController" // 显示搜索页面
+#define SHOW_FENLEI   @"pushClassificationViewController" // 显示分类页面
+#define SHOW_FIND   @"pushFindDetailViewController" // 显示发现文章页面
+
+
+#define iPhone4 ([UIScreen instancesRespondToSelector:@selector(currentMode)]) ? CGSizeEqualToSize(CGSizeMake(320, 480), [UIScreen mainScreen].currentMode.size):NO
+#define iPhone4S ([UIScreen instancesRespondToSelector:@selector(currentMode)]) ? CGSizeEqualToSize(CGSizeMake(640, 960), [UIScreen mainScreen].currentMode.size):NO // 是否是3.5寸设备
+#define iPhone6 ([UIScreen instancesRespondToSelector:@selector(currentMode)]) ? CGSizeEqualToSize(CGSizeMake(750, 1334), [UIScreen mainScreen].currentMode.size):NO // 是否是iPhone6设备
+#define iPhone6Plus ([UIScreen instancesRespondToSelector:@selector(currentMode)]) ? CGSizeEqualToSize(CGSizeMake(1242, 2208), [UIScreen mainScreen].currentMode.size):NO // 是否是iPhone6Plus设备
+#define iPhone6SPlus ([UIScreen instancesRespondToSelector:@selector(currentMode)]) ? CGSizeEqualToSize(CGSizeMake(1125, 2001), [UIScreen mainScreen].currentMode.size):NO
+
+// 数据检测判断
+#define IS_NSSTRING(obj)     [obj isKindOfClass: [NSString class]] //是否 NSString对象
+#define IS_NSARRAY(obj)      [obj isKindOfClass: [NSArray class]] //是否 NSArray对象
+#define IS_NSNUMBER(obj)     [obj isKindOfClass: [NSNumber class]] //是否是NSNumber
+#define IS_NSDICTIONARY(obj) [obj isKindOfClass: [NSDictionary class]] //是否 NSDictionary对象
+
+#define OBJ_NOT_NIL(x) x==nil?@"":x
+#define LOADIMAGE(file,ext) [UIImage imageWithContentsOfFile:[[NSBundle mainBundle]pathForResource:file ofType:ext]]
+
+//#define DEBUG_MODE
+#ifdef DEBUG_MODE
+#define DeLog( s, ... ) NSLog( @"<%@:(%d)> %@", [[NSString stringWithUTF8String:__FILE__] lastPathComponent], __LINE__, [NSString stringWithFormat:(s), ##__VA_ARGS__] )
+#else
+#define DeLog( s, ... )
+#endif
+
+#define UMENG_APPKEY @"550bc4eefd98c54cdc00007d" // 友盟appKey
+
+// 服务器请求地址
+#define TEST_URL  0  //测试 1；正式 0
+#if (TEST_URL == 1)
+#define HEAD_REQSTR @"http://192.168.110.41:81"
+#else
+#define HEAD_REQSTR @"http://ftt.mysjzs.com"
+#endif
+
+#define SHOW_REAL_VIEW_FLAG   [[[NSUserDefaults standardUserDefaults] objectForKey:@"SHOW_FLAG"] boolValue]//是否显示真实界面
+#define HAS_CONNECTED_PC [[[NSUserDefaults standardUserDefaults] objectForKey:@"hasconnectedpc"] boolValue]//是否连接过PC端激活(写入文件)
+#define DIRECTLY_GO_APPSTORE     [[[NSUserDefaults standardUserDefaults] objectForKey:@"directlygoappstore"] boolValue]//是否直接跳store
+
+#define ENABLE_EU [[[NSUserDefaults standardUserDefaults] objectForKey:@"euswich"] boolValue]//开关,是否启用EU

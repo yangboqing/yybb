@@ -1,0 +1,25 @@
+{
+  "DVTSourceControlWorkspaceBlueprintPrimaryRemoteRepositoryKey" : "03a2f70b-ae05-4086-9bec-9aeb3ce1f75c++3443",
+  "DVTSourceControlWorkspaceBlueprintWorkingCopyRepositoryLocationsKey" : {
+    "03a2f70b-ae05-4086-9bec-9aeb3ce1f75c++3443" : {
+
+    }
+  },
+  "DVTSourceControlWorkspaceBlueprintWorkingCopyStatesKey" : {
+    "03a2f70b-ae05-4086-9bec-9aeb3ce1f75c++3443" : 0
+  },
+  "DVTSourceControlWorkspaceBlueprintIdentifierKey" : "E56A7A71-D36C-4928-9EE2-AF6014B95C6E",
+  "DVTSourceControlWorkspaceBlueprintWorkingCopyPathsKey" : {
+    "03a2f70b-ae05-4086-9bec-9aeb3ce1f75c++3443" : "My_Prokect\/"
+  },
+  "DVTSourceControlWorkspaceBlueprintNameKey" : "browser",
+  "DVTSourceControlWorkspaceBlueprintVersion" : 204,
+  "DVTSourceControlWorkspaceBlueprintRelativePathToProjectKey" : "browser\/browser.xcodeproj",
+  "DVTSourceControlWorkspaceBlueprintRemoteRepositoriesKey" : [
+    {
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryURLKey" : "svn:\/\/192.168.100.253:9999\/repos",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositorySystemKey" : "com.apple.dt.Xcode.sourcecontrol.Subversion",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryIdentifierKey" : "03a2f70b-ae05-4086-9bec-9aeb3ce1f75c++3443"
+    }
+  ]
+}

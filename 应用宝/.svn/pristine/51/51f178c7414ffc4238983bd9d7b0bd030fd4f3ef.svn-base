@@ -1,0 +1,956 @@
+//
+//  ChoiceViewController.m
+//  Mymenu
+//
+//  Created by mingzhi on 14/11/20.
+//  Copyright (c) 2014年 mingzhi. All rights reserved.
+//
+
+#import "ChoiceViewController_my.h"
+#import "MyCollectionViewFlowLayout.h"
+#import "HorizontalSlidingCell.h"
+#import "PublicCollectionCell.h"
+#import "TopicCollectionCell.h"
+//#import "LunboViewController.h"//轮播
+#import "SRRefreshView.h"
+#import "DlfromDefine.h"
+#import "ChargeFreeViewController.h"//限免免费收费
+#import "TopicDetailsViewController.h"//专题详情
+#import "UIWebViewController.h" //web
+#import "FindDetailViewController.h" //文章详情
+#import "AppStatusManage.h"
+#import "SearchResult_DetailViewController.h"
+#import "IphoneAppDelegate.h"
+#define leftBtnWidth 90/2
+#define myCollectionViewContentInsertTop MULTIPLE*375/2
+#define ThesearchWidth MainScreen_Width-ThestartX*2//搜索原始宽度
+#define showHehght 64 //20+51.6*MULTIPLE//最后漏出来高度
+#define space 14//搜索框距离下边缘高度
+#define leftBtnStartY myCollectionView.contentOffset.y+(showHehght-leftBtnWidth)/2+5 //左按钮动态位置
+
+
+@interface ChoiceViewController_my ()<UICollectionViewDataSource ,UICollectionViewDelegate ,UICollectionViewDelegateFlowLayout ,SRRefreshDelegate,MyServerRequestManagerDelegate,CarouselViewDelegate>
+{
+    //UI
+    UICollectionView *myCollectionView;
+    CarouselView *lunboHeadView;//轮播
+    UIImageView *coverImageView;
+    
+    UIButton *backBtn; // 与leftButton触发同一个事件
+    
+    SRRefreshView   *_slimeView;
+    UIImageView *searchBack;
+    UILabel *searchInputView;
+    UIImageView *glassImageView;
+    
+    UILabel *titleLabel;
+    
+    CollectionViewBack *backView;
+    
+    ChargeFreeViewController *chargeFreeView;
+    TopicDetailsViewController *topicDetailsView;
+    UIWebViewController *webView;
+    FindDetailViewController *findDetailViewController;
+    
+    //数据
+    CGFloat searchWidth;
+    CGFloat searchHeight;
+    BOOL firstSetFrame;
+    CGFloat headShowHeight;
+    
+    NSMutableArray *lunboArray;
+    
+    //下拉
+    BOOL isLoading;
+    //上拉
+    NSMutableArray *moreDataArray;
+    int morePage;
+    BOOL hasNextPage;
+    BOOL isRequesting;//是否正在数据请求
+    BOOL lunboClick;
+    
+    SearchResult_DetailViewController *detailVC;//之创建一个详情页面,复用
+}
+@end
+
+@implementation ChoiceViewController_my
+
+- (void)dealloc
+{
+    [[MyServerRequestManager getManager] removeListener:self];
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    
+    //用于更新下载按钮状态
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(reloadListData)
+                                                 name:REFRESH_MOBILE_APP_LIST
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(reloadListData)
+                                                 name:ADD_APP_DOWNLOADING
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(reloadListData)
+                                                 name:RELOAD_UPDATA_AFTER_SCREEN
+                                               object:nil];
+    
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(reloadListData)
+                                                 name:RELOADDOWNLOADCOUNT
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter]addObserver:self
+                                            selector:@selector(reloadListData)
+                                                name:UPDATE_DOWNLOAD_TOPVIEW_COUNT
+                                              object:nil];
+    
+    //点击远程通知
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(clickRemotePush:)
+                                                 name:REMOTE_PUSH
+                                               object:nil];
+    
+    chargeFreeView = [ChargeFreeViewController defaults];
+    topicDetailsView = [TopicDetailsViewController defaults];
+    webView = [UIWebViewController new];
+    findDetailViewController = [FindDetailViewController new];
+    
+    detailVC = [[SearchResult_DetailViewController alloc]init];
+    
+    [[MyServerRequestManager getManager] addListener:self];
+    morePage = 1;
+    hasNextPage = YES;
+    
+    //列表
+    MyCollectionViewFlowLayout *flowLayout = [MyCollectionViewFlowLayout new];
+    flowLayout.scrollDirection = UICollectionViewScrollDirectionVertical;
+    myCollectionView = [[UICollectionView alloc] initWithFrame:CGRectZero collectionViewLayout:flowLayout];
+    myCollectionView.backgroundColor = hllColor(242, 242, 242, 1);
+    myCollectionView.dataSource = self;
+    myCollectionView.delegate = self;
+    myCollectionView.indicatorStyle=UIScrollViewIndicatorStyleDefault;
+    
+    [myCollectionView registerClass:[HorizontalSlidingCell class] forCellWithReuseIdentifier:LIMITEDFREEAPPS];
+    [myCollectionView registerClass:[HorizontalSlidingCell class] forCellWithReuseIdentifier:CHARGEAPPS];
+    [myCollectionView registerClass:[HorizontalSlidingCell class] forCellWithReuseIdentifier:FREEAPPS];
+    [myCollectionView registerClass:[TopicCollectionCell class] forCellWithReuseIdentifier:SPECIALS];
+    [myCollectionView registerClass:[PublicCollectionCell class] forCellWithReuseIdentifier:RECOMMENDAPPS];
+    [myCollectionView registerClass:[LoadingCollectionCell class] forCellWithReuseIdentifier:MORECELL];
+    
+    
+    //轮播头
+    lunboHeadView = [CarouselView new];
+    lunboHeadView.delegate = self;
+    lunboHeadView.backgroundColor = myCollectionView.backgroundColor;
+    //    myCollectionView.contentInset = UIEdgeInsetsMake(myCollectionViewContentInsertTop, 0, 0, 0);
+    myCollectionView.contentOffset = CGPointMake(0, -myCollectionViewContentInsertTop);
+    
+    coverImageView = [UIImageView new];
+    coverImageView.image = [UIImage imageNamed:@"menghei"];
+    coverImageView.alpha = 0.5;
+    //[coverImageView setImage:[[UIImage imageNamed:@"menghei"] imageWithTintColor:[UIColor colorWithWhite:0 alpha:0.6] blendMode:kCGBlendModeOverlay]];
+    coverImageView.userInteractionEnabled = NO;
+    [lunboHeadView addSubview:coverImageView];
+    
+    //搜索框
+    UIImage *leftBarImg = [UIImage imageNamed:@"nav_categoryIcon"];
+    _leftButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    _leftButton.backgroundColor = [UIColor clearColor];
+    [_leftButton setBackgroundImage:leftBarImg forState:UIControlStateNormal];
+    //    [_leftButton setBackgroundImage:[leftBarImg imageWithTintColor:[UIColor colorWithWhite:1 alpha:1] blendMode:kCGBlendModeOverlay] forState:UIControlStateNormal];
+    //    [_leftButton addTarget:self action:@selector(leftBtnClick:) forControlEvents:UIControlEventTouchUpInside];
+    
+    backBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    backBtn.backgroundColor = [UIColor clearColor];
+    [backBtn addTarget:self action:@selector(leftBtnClick:) forControlEvents:UIControlEventTouchUpInside];
+    
+    titleLabel = [UILabel new];
+    titleLabel.backgroundColor = [UIColor clearColor];
+    titleLabel.text = @"快用";
+    titleLabel.font = [UIFont systemFontOfSize:18];
+    titleLabel.textAlignment = NSTextAlignmentCenter;
+    
+    //下拉刷新
+    _slimeView = [SRRefreshView new];
+    _slimeView.delegate = self;
+    _slimeView.upInset = myCollectionViewContentInsertTop;
+    _slimeView.slimeMissWhenGoingBack = YES;
+    _slimeView.slime.bodyColor = [UIColor blackColor];
+    _slimeView.slime.skinColor = [UIColor blueColor];
+    _slimeView.slime.lineWith = 0;
+    _slimeView.slime.shadowBlur = 0;
+    _slimeView.slime.shadowColor = [UIColor greenColor];
+    
+    
+    //菊花
+    backView = [CollectionViewBack new];
+    backView.status = Loading;
+    __weak ChoiceViewController_my* mySelf = self;
+    [backView setClickActionWithBlock:^{
+        [mySelf requestData:NO];
+    }];
+    
+    
+    [self.view addSubview:myCollectionView];
+    [myCollectionView addSubview:lunboHeadView];
+    [myCollectionView addSubview:_slimeView];
+    [myCollectionView addSubview:_leftButton];
+    [myCollectionView addSubview:backBtn];
+    
+    [myCollectionView addSubview:titleLabel];
+    [self.view addSubview:backView];
+}
+
+- (void)viewWillLayoutSubviews{
+    
+    [super viewWillLayoutSubviews];
+    CGRect rect = self.view.bounds;
+    
+    if (!firstSetFrame) {
+        myCollectionView.frame = rect;
+        [lunboHeadView setCarousViewFrame:CGRectMake(0, myCollectionView.contentOffset.y, rect.size.width, -myCollectionView.contentOffset.y)];
+        headShowHeight = -myCollectionView.contentOffset.y;
+        coverImageView.frame = lunboHeadView.bounds;
+        _slimeView.frame = CGRectMake(0, -myCollectionViewContentInsertTop, rect.size.width, 0);
+        
+        _leftButton.frame = CGRectMake(ThestartX, leftBtnStartY, leftBtnWidth, leftBtnWidth);
+        backBtn.frame = CGRectMake(ThestartX-10, leftBtnStartY-10, leftBtnWidth+16, leftBtnWidth+16);
+        searchBack.frame = searchInputView.frame = CGRectMake(rect.size.width-ThestartX-searchWidth, -searchHeight-space, searchWidth, searchHeight);
+        titleLabel.frame = CGRectZero;
+        titleLabel.hidden = YES;
+        glassImageView.frame = CGRectMake(0, 0, 30/2, 30/2);
+        firstSetFrame = YES;
+    }
+    
+    glassImageView.center = CGPointMake(MULTIPLE*18, searchInputView.frame.size.height/2);
+}
+
+- (void)didReceiveMemoryWarning {
+    [super didReceiveMemoryWarning];
+    // Dispose of any resources that can be recreated.
+    
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self.navigationController setNavigationBarHidden:YES];
+    [[UIApplication sharedApplication] setStatusBarStyle:UIStatusBarStyleLightContent animated:NO];
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    [self.navigationController setNavigationBarHidden:NO];
+    [[UIApplication sharedApplication] setStatusBarStyle:UIStatusBarStyleDefault animated:NO];
+}
+
+- (void) viewDidAppear:(BOOL)animated{
+    [super viewDidAppear:animated];
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        if (browserAppDelegate.note) {
+            [self receiveNotificationPush:browserAppDelegate.note];
+        }
+    });
+}
+
+#pragma mark - 消息推送事件
+- (void)receiveNotificationPush:(NSNotification *)noti{
+    
+    //    NSLog(@"接受通知页面跳转");
+    if (!noti.object) return;
+    
+    NSDictionary *infoDic = noti.object;
+    /*
+     aps =     {
+     alert = "@@@@@@@@@";
+     badge = 999;
+     };
+     "push_detail" = 414478124;
+     "push_type" = app;
+     
+     */
+    if ([[infoDic objectForKey:@"push_type"] isEqualToString:@"app"]) {
+        //应用详情
+        
+        NSString  *ID = [infoDic objectForKey:@"push_detail"];
+        if([[infoDic objectForKey:@"push_type" ] isEqualToString:REMOTE_PUSH_APP]&&ID){
+            
+            //应用详情
+            if (SHOW_REAL_VIEW_FLAG&&!DIRECTLY_GO_APPSTORE) {
+                [detailVC setAppSoure:REMOTE_PUSH];
+                [detailVC beginPrepareAppContent:@{@"appid": ID}];
+                [self.navigationController pushViewController:detailVC animated:YES];
+            }else{
+                [[NSNotificationCenter  defaultCenter] postNotificationName:OPEN_APPSTORE object:ID];
+            }
+            
+            [[ReportManage instance] reportRemoteNotificationClickedWithType:REMOTE_PUSH_APP andContentid:ID];
+        }else{
+            [[ReportManage instance] reportRemoteNotificationClickedWithType:@"normal" andContentid:@"normal"];
+        }
+    }
+}
+
+/*
+ #pragma mark - Navigation
+ 
+ // In a storyboard-based application, you will often want to do a little preparation before navigation
+ - (void)prepareForSegue:(UIStoryboardSegue *)segue sender:(id)sender {
+ // Get the new view controller using [segue destinationViewController].
+ // Pass the selected object to the new view controller.
+ }
+ */
+
+#pragma mark - 按钮点击
+- (void)showSearchView
+{
+    //    SearchViewController *searchView = [[SearchViewController alloc] initWithSearchType:searchType_chosen];
+    //    [self.navigationController pushViewController:searchView animated:YES];
+    [[NSNotificationCenter defaultCenter] postNotificationName:SHOW_SEARCHVIEW object:self];
+}
+
+- (void)leftBtnClick:(id)sender
+{
+    if (leftclickBlock) {
+        leftclickBlock(sender);
+    }
+}
+
+- (void)setleftClickBlock:(LeftBtnclickBlock)block{
+    
+    leftclickBlock = block;
+}
+
+- (void)reloadListData
+{
+    [myCollectionView reloadData];
+}
+
+#pragma mark - 限免免费收费
+- (void)listButtonClick:(MenuType)sender
+{
+    chargeFreeView.listType = sender;
+    [self.navigationController pushViewController:chargeFreeView animated:YES];
+}
+
+#pragma mark - 请求数据
+- (void)requestData:(BOOL)isUseCache
+{
+    //    NSLog(@"精选请求数据");
+    [[MyServerRequestManager getManager] requestCarouselDiagrams:lunBo_chosenType isUseCache:isUseCache userData:self];
+    [[MyServerRequestManager getManager] requestIndexMixedData:isUseCache userData:self];
+}
+
+- (void)requestMoreData
+{
+    if (!isRequesting) {
+        //        NSLog(@"精选请求更多数据");
+        isRequesting = YES;
+        [self freshLoadingCell:CollectionCellRequestStyleLoading];
+        [[MyServerRequestManager getManager] requestWonderfulRecommendList:morePage isUseCache:YES userData:self];
+    }
+}
+
+#pragma mark - UICollectionView datasource
+
+-(NSInteger)numberOfSectionsInCollectionView:(UICollectionView *)collectionView
+{
+    return 16;
+}
+
+-(NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section
+{
+    if (section%2 == 0){//横滑+专题
+        return 1;
+    }else if (section%2 == 1 && section < 15 ){//夹cell
+        return 8;
+    }else{ //更多cell
+        return hasNextPage?moreDataArray.count+1:moreDataArray.count;
+    }
+}
+
+-(UICollectionViewCell *)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath
+{
+    if (indexPath.section%4 == 0 && indexPath.section < 9){ //横滑
+        HorizontalSlidingCell *cell;
+        
+        if (!indexPath.section) {
+            cell = (HorizontalSlidingCell *)[collectionView dequeueReusableCellWithReuseIdentifier:LIMITEDFREEAPPS forIndexPath:indexPath];
+            [cell setColor:[UIImage imageNamed:@"list_limit"] andName:@"限免金榜"];
+            cell.dataArray = [_dataDic objectForKey:LIMITEDFREEAPPS];
+            cell.type = limiteCharge_App;
+        }else if (indexPath.section==4)
+        {
+            cell = (HorizontalSlidingCell *)[collectionView dequeueReusableCellWithReuseIdentifier:FREEAPPS forIndexPath:indexPath];
+            [cell setColor:[UIImage imageNamed:@"list_free"] andName:@"免费畅玩"];
+            cell.dataArray = [_dataDic objectForKey:FREEAPPS];
+            cell.type = free_App;
+        }else if (indexPath.section==8)
+        {
+            cell = (HorizontalSlidingCell *)[collectionView dequeueReusableCellWithReuseIdentifier:CHARGEAPPS forIndexPath:indexPath];
+            [cell setColor:[UIImage imageNamed:@"list_charge"] andName:@"畅销金榜"];
+            cell.dataArray = [_dataDic objectForKey:CHARGEAPPS];
+            cell.type = charge_App;
+        }
+        
+        [cell setapBlock:^(NSString *appID, NSIndexPath *index) {
+            if ([appID isEqualToString:@"点击全部按钮"]) {
+                //点全部
+                //                NSLog(@"横滑点击全部按钮");
+                if (!indexPath.section) {
+                    //限免应用
+                    [self listButtonClick:limiteCharge_App];
+                }else if (indexPath.section==4)
+                {
+                    //免费应用
+                    [self listButtonClick:free_App];
+                }else if (indexPath.section==8)
+                {
+                    //收费应用
+                    [self listButtonClick:charge_App];
+                }
+            }else
+            {
+                //                NSLog(@"横滑点击%@  %@",appID,index);
+                NSString *colorm;
+                NSDictionary *dataDic = nil;
+                switch (indexPath.section) {
+                    case 0:
+                        colorm = HOME_PAGE_LIMITFREE_APP((long)index.row);
+                        dataDic = [[_dataDic objectForKey:LIMITEDFREEAPPS] objectAtIndex:index.row];
+                        break;
+                        
+                    case 4:
+                        colorm = HOME_PAGE_FREE_APP((long)index.row);
+                        dataDic = [[_dataDic objectForKey:FREEAPPS] objectAtIndex:index.row];
+                        break;
+                        
+                    case 8:
+                        colorm = HOME_PAGE_PAID_APP((long)index.row);
+                        dataDic = [[_dataDic objectForKey:CHARGEAPPS] objectAtIndex:index.row];
+                        break;
+                        
+                    default:
+                        break;
+                }
+                [[ReportManage instance] reportAppDetailClick:colorm contentDic:dataDic];
+                
+                if (SHOW_REAL_VIEW_FLAG&&!DIRECTLY_GO_APPSTORE) {
+                    [self pushToAppDetailViewWithAppInfor:dataDic andSoure:[NSString stringWithFormat:@"choice_%@",colorm]];
+                }else{
+                    [[NSNotificationCenter  defaultCenter] postNotificationName:OPEN_APPSTORE object:appID];
+                }
+            }
+        }];
+        
+        return cell;
+    }else if ((indexPath.section%2 == 0 && indexPath.section/2%2 == 1 && indexPath.section < 15) || indexPath.section == 12){//专题
+        TopicCollectionCell *cell = (TopicCollectionCell *)[collectionView dequeueReusableCellWithReuseIdentifier:SPECIALS forIndexPath:indexPath];
+        //设置数据
+        NSArray *totalDataArray = [_dataDic objectForKey:SPECIALS];
+        NSDictionary *specialDic;
+        NSInteger showIndex = indexPath.section/2;
+        if (showIndex<6) {
+            if ((showIndex-1)/2<totalDataArray.count) {
+                specialDic = [totalDataArray objectAtIndex:(showIndex-1)/2];
+            }
+        }else
+        {
+            if ((showIndex+1)/2<totalDataArray.count) {
+                specialDic = [totalDataArray objectAtIndex:(showIndex+1)/2];
+            }
+        }
+        //        NSArray *appArray = [totalDataArray objectsAtIndexes:[NSIndexSet indexSetWithIndexesInRange:NSMakeRange((indexPath.section-1)/2*4, 4)]];
+        [cell setCellData:specialDic];
+        
+        return cell;
+    }else{
+        PublicCollectionCell *cell = (PublicCollectionCell *)[collectionView dequeueReusableCellWithReuseIdentifier:RECOMMENDAPPS forIndexPath:indexPath];
+        [cell setBottomLineLong:NO];
+        
+        if (indexPath.section < 14) {
+            //设置下线
+            if (indexPath.row==7) {
+                [cell setBottomLineLong:YES];
+            }
+            //设置数据
+            NSArray *totalDataArray = [_dataDic objectForKey:RECOMMENDAPPS];
+            NSArray *showDataArray = [totalDataArray objectsAtIndexes:[NSIndexSet indexSetWithIndexesInRange:NSMakeRange((indexPath.section-1)/2*8, 8)]];
+            NSDictionary *showCellDic = [showDataArray objectAtIndex:indexPath.row];
+            //设置属性
+            cell.downLoadSource = HOME_PAGE_RECOMMEND_MY(indexPath.section, indexPath.row);
+            [cell setCellData:showCellDic];
+            [cell initDownloadButtonState];
+            
+        }else
+        {
+            //上拉更多
+            if (indexPath.row == moreDataArray.count){
+                LoadingCollectionCell * cell = [collectionView dequeueReusableCellWithReuseIdentifier:MORECELL forIndexPath:indexPath];
+                cell.style = CollectionCellRequestStyleLoading;
+                return cell;
+            }
+            
+            //设置数据
+            NSDictionary *showCellDic = [moreDataArray objectAtIndex:indexPath.row];
+            //设置属性
+            cell.downLoadSource = HOME_PAGE_RECOMMEND_MY(indexPath.section, indexPath.row);
+            
+            [cell setCellData:showCellDic];
+            [cell initDownloadButtonState];
+            
+        }
+        
+        return cell;
+    }
+}
+
+#pragma mark - UICollectionViewLayoutDelegate
+
+-(CGSize)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout sizeForItemAtIndexPath:(NSIndexPath *)indexPath{
+    CGSize size;
+    
+    if (indexPath.section%4 == 0 && indexPath.section < 9){
+        size = CGSizeMake(collectionView.frame.size.width, 324/2*MULTIPLE);//横滑
+    }else if ((indexPath.section%2 == 0 && indexPath.section/2%2 == 1 && indexPath.section < 15) || indexPath.section == 12){
+        size = CGSizeMake(collectionView.frame.size.width, 298/2*MULTIPLE);//专题
+    }else{
+        size = CGSizeMake(collectionView.frame.size.width, 168/2*MULTIPLE);//cell
+        if (indexPath.section>14) {
+            size = (indexPath.row==moreDataArray.count?CGSizeMake(collectionView.frame.size.width, 44):CGSizeMake(collectionView.frame.size.width, 204/2*MULTIPLE));
+        }
+    }
+    
+    return size;
+}
+
+-(UIEdgeInsets)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout insetForSectionAtIndex:(NSInteger)section{
+    
+    //    UIEdgeInsets insets = (section==15||(section==14&&!moreDataArray.count))?UIEdgeInsetsMake(0, 0, 0, 0):UIEdgeInsetsMake(0, 0, 18/2*MULTIPLE, 0);
+    UIEdgeInsets insets=UIEdgeInsetsMake(0, 0, 0, 0);
+    if (section==0) {
+        UIEdgeInsets insets=UIEdgeInsetsMake(0, 0, 18/2*MULTIPLE, 0);
+        return insets;
+    }
+    if (section%4 == 0 && section < 9) {
+        UIEdgeInsets insets=UIEdgeInsetsMake( 18/2*MULTIPLE, 0, 18/2*MULTIPLE, 0);
+        return insets;
+    }
+    
+    return insets;
+}
+
+- (CGFloat)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout*)collectionViewLayout minimumLineSpacingForSectionAtIndex:(NSInteger)section{
+    return 0;
+}
+
+-(void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath
+{
+    if ([[collectionView cellForItemAtIndexPath:indexPath] isKindOfClass:[LoadingCollectionCell class]]) {
+        return;
+    }
+    //appstore
+    if (indexPath.section%4 == 0 && indexPath.section < 9){
+        //横滑
+    }else if ((indexPath.section%2 == 0 && indexPath.section/2%2 == 1 && indexPath.section < 15) || indexPath.section == 12){
+        //专题
+        //设置数据
+        NSArray *totalDataArray = [_dataDic objectForKey:SPECIALS];
+        NSDictionary *specialDic;
+        NSInteger showIndex = indexPath.section/2;
+        if (showIndex<6) {
+            if ((showIndex-1)/2<totalDataArray.count) {
+                specialDic = [totalDataArray objectAtIndex:(showIndex-1)/2];
+            }
+        }else
+        {
+            if ((showIndex+1)/2<totalDataArray.count) {
+                specialDic = [totalDataArray objectAtIndex:(showIndex+1)/2];
+            }
+        }
+        
+        [topicDetailsView setDataDic:specialDic andColorm:HOME_PAGE_RECOMMEND_MY((long)indexPath.section,(long)indexPath.row)];
+        [self.navigationController pushViewController:topicDetailsView animated:YES];
+    }else{
+        //cell
+        PublicCollectionCell *cell = (PublicCollectionCell *)[collectionView cellForItemAtIndexPath:indexPath];
+        [[ReportManage instance] reportAppDetailClick:HOME_PAGE_RECOMMEND_MY((long)indexPath.section, (long)indexPath.row) contentDic:cell.cellDataDic];
+        
+        NSDictionary *showCellDic = nil;
+        
+        if (indexPath.section < 14) {
+            
+            //设置数据
+            NSArray *totalDataArray = [_dataDic objectForKey:RECOMMENDAPPS];
+            NSArray *showDataArray = [totalDataArray objectsAtIndexes:[NSIndexSet indexSetWithIndexesInRange:NSMakeRange((indexPath.section-1)/2*8, 8)]];
+            showCellDic = [showDataArray objectAtIndex:indexPath.row];
+            
+        }else{
+            //上拉更多
+            //设置数据
+            showCellDic = [moreDataArray objectAtIndex:indexPath.row];
+        }
+        
+        //push到详情页
+        
+        NSString *exposureSource = @"choice_list";
+        
+        if (SHOW_REAL_VIEW_FLAG&&!DIRECTLY_GO_APPSTORE) {
+            [self pushToAppDetailViewWithAppInfor:showCellDic andSoure:@"choice_list"];
+        }else{
+            //跳转store
+            [[NSNotificationCenter  defaultCenter] postNotificationName:OPEN_APPSTORE object:cell.appdigitalid];
+        }
+        
+        [[ReportManage instance] ReportAppDetailClick:exposureSource appid:cell.appID];
+    }
+}
+
+- (void)collectionView:(UICollectionView *)collectionView didEndDisplayingCell:(UICollectionViewCell *)cell forItemAtIndexPath:(NSIndexPath *)indexPath{
+    
+}
+
+#pragma mark - scrollView delegate
+
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView{
+    //下拉刷新
+    [_slimeView scrollViewDidScroll];
+    
+    coverImageView.userInteractionEnabled = NO;
+    lunboClick = YES;
+    lunboHeadView.alpha = 1;
+    coverImageView.alpha = 0.5;
+    titleLabel.hidden = YES;
+    //滑动设置页面
+    //定义为int而非float,防止某些情况下出现的值可能为0.0几,导致仿导航栏异常
+    CGFloat bounceHeight = -myCollectionView.contentOffset.y-myCollectionViewContentInsertTop;
+    //NSLog(@"=====%f",bounceHeight);
+    if (bounceHeight > 20) {
+        coverImageView.backgroundColor = [UIColor clearColor];
+        //下拉变大
+        if (-myCollectionView.contentOffset.y*750/410<MainScreen_Width) {
+            [lunboHeadView setCarousViewFrame:CGRectMake(0 ,-MainScreen_Width*410/750,MainScreen_Width , MainScreen_Width*410/750)];
+        }else
+        {
+            [lunboHeadView setCarousViewFrame:CGRectMake((MainScreen_Width+myCollectionView.contentOffset.y*750/410)/2,myCollectionView.contentOffset.y,-myCollectionView.contentOffset.y*750/410 , -myCollectionView.contentOffset.y)];
+        }
+        
+        coverImageView.frame = lunboHeadView.bounds;
+        //避免返回时scrollview执行
+        if ([[self.navigationController class] isSubclassOfClass:[self class]]) {
+            [[UIApplication sharedApplication] setStatusBarStyle:UIStatusBarStyleLightContent animated:NO];
+        }
+        //按钮及搜索框
+        _leftButton.frame = CGRectMake(ThestartX, leftBtnStartY, leftBtnWidth, leftBtnWidth);
+        backBtn.frame = CGRectMake(ThestartX-10, leftBtnStartY-10, leftBtnWidth+16, leftBtnWidth+16);
+        searchWidth = ThesearchWidth;//变窄40
+        searchHeight = searchWidth*80/700;
+    }else {
+        //按钮及搜索框
+        _leftButton.frame = CGRectMake(ThestartX, leftBtnStartY, leftBtnWidth, leftBtnWidth);
+        backBtn.frame = CGRectMake(ThestartX-10, leftBtnStartY-10, leftBtnWidth+16, leftBtnWidth+16);
+        CGFloat linjie = -headShowHeight+20+showHehght;//变窄临界
+        if (bounceHeight <= 20 && bounceHeight > linjie) {
+            //搜索框按钮位置
+            searchWidth = ThesearchWidth-(20-bounceHeight)/(20-linjie)*40;//变窄40
+            searchHeight = searchWidth*80/700;
+            
+            [lunboHeadView setCarousViewFrame:CGRectMake(0, -headShowHeight, self.view.bounds.size.width, headShowHeight)];
+            coverImageView.frame = lunboHeadView.bounds;
+            
+            //coverImageView.backgroundColor = [UIColor colorWithWhite:MIN((20-bounceHeight)/(20-linjie), 0.99) alpha:MIN((20-bounceHeight)/(20-linjie), 0.6)];//不渐变则注释
+            coverImageView.backgroundColor = hllColor(255, 204, 0, (20-bounceHeight)/(20-linjie));
+            
+            //[_leftButton setBackgroundImage: [[UIImage imageNamed:@"nav_categoryIcon"] imageWithTintColor:[UIColor colorWithWhite:1-(20-bounceHeight)/(20-linjie) alpha:1.0] blendMode:kCGBlendModeOverlay] forState:UIControlStateNormal];//一直白
+        }else if (bounceHeight < linjie){
+            //上滑固定
+            searchWidth = ThesearchWidth-40;//变窄40
+            searchHeight = searchWidth*80/700;
+            
+            [lunboHeadView setCarousViewFrame:CGRectMake(0, myCollectionView.contentOffset.y-myCollectionViewContentInsertTop+showHehght, self.view.bounds.size.width, myCollectionViewContentInsertTop)];
+            coverImageView.frame = lunboHeadView.bounds;
+            
+            coverImageView.userInteractionEnabled = YES;
+            lunboClick = NO;
+            lunboHeadView.alpha = 0.97;
+            
+            //coverImageView.backgroundColor = [UIColor colorWithWhite:0.99 alpha:0.6];
+            coverImageView.backgroundColor = hllColor(255, 204, 0, 1);
+            coverImageView.alpha = 1;
+            //[_leftButton setBackgroundImage:[[UIImage imageNamed:@"nav_categoryIcon"] imageWithTintColor:[UIColor colorWithWhite:0 alpha:0] blendMode:kCGBlendModeOverlay] forState:UIControlStateNormal];//一直白
+            titleLabel.hidden = NO;
+            titleLabel.frame = CGRectMake(0, 0, self.view.bounds.size.width, searchHeight);
+            titleLabel.center = CGPointMake(self.view.bounds.size.width/2, _leftButton.center.y);
+        }
+    }
+    searchBack.frame = searchInputView.frame = CGRectMake(self.view.bounds.size.width-ThestartX-searchWidth, -searchHeight-space, searchWidth, searchHeight);
+    searchBack.center = searchInputView.center = CGPointMake(self.view.bounds.size.width-ThestartX-searchWidth/2, MAX(searchBack.center.y, _leftButton.center.y));
+    
+    //上拉刷新数据
+    if (isRequesting || isLoading || !hasNextPage) return;
+    if (!scrollView.contentSize.height) return;
+    //NSLog(@"%f  \n%f",scrollView.contentOffset.y+MainScreen_Height,scrollView.contentSize.height);
+    if (scrollView.contentOffset.y+MainScreen_Height - 20 >= scrollView.contentSize.height-BOTTOM_HEIGHT){
+        
+        [self performSelector:@selector(requestMoreData) withObject:nil afterDelay:0];
+    }
+}
+
+BOOL _deceler_choice;
+- (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate
+{
+    [_slimeView scrollViewDidEndDraging];
+    if (!decelerate && !_deceler_choice) {
+        [self baoguang];
+        [self setlunboViewShow:NO];
+    }
+    _deceler_choice = NO;
+}
+
+- (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView
+{
+    if (scrollView.decelerating) _deceler_choice = YES;
+    //轮播设置
+    [self setlunboViewShow:YES];
+}
+
+- (void)scrollViewDidEndDecelerating:(UIScrollView *)scrollView{
+    [_slimeView scrollViewDidEndDecelerating];
+    
+    if (!isLoading) {
+        //轮播设置
+        [self setlunboViewShow:NO];
+    }
+    [self baoguang];
+}
+
+- (void)setlunboViewShow:(BOOL)bl
+{
+    [lunboHeadView setCarousTimerStop:bl];
+    [lunboHeadView setCarousTrackHide:bl];
+}
+
+#pragma mark - slimeRefresh delegate
+- (void)slimeRefreshStartRefresh:(SRRefreshView *)refreshView
+{
+    isLoading = YES;
+    //[self performSelector:@selector(requestData:) withObject:[NSNumber numberWithBool:NO] afterDelay:0];
+    [self requestData:NO];
+}
+
+- (void)endFresh
+{
+    [_slimeView performSelector:@selector(endRefresh) withObject:nil afterDelay:0 inModes:[NSArray arrayWithObject:NSRunLoopCommonModes]];
+    isLoading = NO;
+    
+    //轮播设置
+    [self setlunboViewShow:NO];
+}
+#pragma mark - CarouselViewDelegate
+- (void)carouselViewClick:(NSInteger)index
+{
+    if (!IS_NSARRAY(lunboArray) || !lunboArray.count || !lunboClick) return;
+    
+    //NSLog(@"轮播点击位置：%i\n %@",index,[lunboArray objectAtIndex:index]);
+    NSDictionary *tmpDic = [lunboArray objectAtIndex:index];
+    NSString *typeStr = [tmpDic objectForKey:LUNBO_LINK];
+    
+    if ([typeStr isEqualToString:@"app"]) {
+        //应用
+        NSDictionary *appDataDic = [tmpDic objectForKey:LUNBO_LINK_DETAIL];
+        if (SHOW_REAL_VIEW_FLAG&&!DIRECTLY_GO_APPSTORE) {
+            [self pushToAppDetailViewWithAppInfor:appDataDic andSoure:@"choice_luobo"];
+        }else{
+            [[NSNotificationCenter  defaultCenter] postNotificationName:OPEN_APPSTORE object:[appDataDic objectForKey:APPDIGITALID]];
+        }
+        
+        
+    }else if ([typeStr isEqualToString:@"article"]) {
+        //文章
+        
+        NSDictionary *articleDataDic = [tmpDic objectForKey:LUNBO_LINK_DETAIL];
+        NSString*fromSource=[NSString stringWithFormat:@"choice_Lunbo%ld",(long)index];
+        NSArray*ary=[NSArray arrayWithObjects:articleDataDic,fromSource, nil];
+        [[NSNotificationCenter defaultCenter] postNotificationName:SHOW_FIND object:ary];
+        
+        //        findDetailViewController.fromSource = [NSString stringWithFormat:@"choice_Lunbo%ld",(long)index];
+        //        findDetailViewController.shareImage = nil;
+        //        findDetailViewController.content = [articleDataDic objectForKey:@"content_url"];
+        //        [findDetailViewController reloadActivityDetailVC:articleDataDic];
+        //        [self.navigationController pushViewController:findDetailViewController animated:YES];
+        
+    }else if ([typeStr isEqualToString:@"mobileLink"]) {
+        //外链
+        NSString *mobileLink = [tmpDic objectForKey:LUNBO_LINK_DETAIL];
+        [webView navigation:mobileLink];
+        [webView setTitle:[tmpDic objectForKey:LUNBO_TITLE]];
+        [self.navigationController pushViewController:webView animated:YES];
+        
+    }else if ([typeStr isEqualToString:@"special"]) {
+        //专题
+        NSDictionary *specialDataDic = [tmpDic objectForKey:LUNBO_LINK_DETAIL];
+        [topicDetailsView setDataDic:specialDataDic andColorm:HOME_PAGE_LUNBO(@"jingxuan", (long)index)];
+        [self.navigationController pushViewController:topicDetailsView animated:YES];
+    }else if ([typeStr isEqualToString:@"safariLink"]) {
+        //safar外链
+        NSString *safariLink = [tmpDic objectForKey:LUNBO_LINK_DETAIL];
+        [[UIApplication sharedApplication] openURL:[NSURL URLWithString:safariLink]];
+    }
+    
+    [[ReportManage instance] reportOtherDetailClick:HOME_PAGE_LUNBO(@"jingxuan", (long)index) appid:[tmpDic objectForKey:@"id"]];
+}
+- (void)carouselViewScroll:(NSInteger)index
+{
+    
+}
+#pragma mark - 轮播图-回调
+- (void)carouselDiagramsRequestSuccess:(NSDictionary *)dataDic type:(lunBoType)type isUseCache:(BOOL)isUseCache userData:(id)userData
+{
+    if (type==lunBo_chosenType) {
+        
+        //检测数据
+        if (![[MyVerifyDataValid instance] checkLunboData:dataDic]) {
+            //            NSLog(@"精选轮播数据有误");
+            [self carouselDiagramsRequestFailed:type isUseCache:isUseCache userData:userData];
+            return;
+        }
+        
+        lunboArray = [dataDic objectForKey:@"data"];
+        //[lunboHeadView setCarous_dataSource:[NSArray arrayWithObjects:@{@"pic_url":@"123"},@{@"pic_url":@"123"},@{@"pic_url":@"123"},@{@"pic_url":@"123"},@{@"pic_url":@"123"},@{@"pic_url":@"123"}, nil]];//ceshi
+        [lunboHeadView setCarous_dataSource:lunboArray];
+    }
+}
+- (void)carouselDiagramsRequestFailed:(lunBoType)type isUseCache:(BOOL)isUseCache userData:(id)userData
+{
+    if (type==lunBo_chosenType) {
+        //lunboHeadView.hidden = YES;
+    }
+}
+#pragma mark - 首页混合数据-回调
+- (void)indexMixedDataRequestSuccess:(NSDictionary *)dataDic isUseCache:(BOOL)isUseCache userData:(id)userData
+{
+    //检测数据
+    if (![[MyVerifyDataValid instance] checkChoiceData:dataDic]) {
+        //        NSLog(@"精选混合数据有误");
+        [self indexMixedDataRequestFailed:isUseCache userData:userData];
+        return;
+    }
+    
+    backView.status = Hidden;
+    //NSLog(@"%@",dataDic);
+    [moreDataArray removeAllObjects];
+    morePage = 1;
+    
+    _dataDic = [[NSMutableDictionary dictionaryWithDictionary:dataDic] objectForKey:@"data"];
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    [myCollectionView reloadData];
+    [CATransaction commit];
+    [self scrollViewDidScroll:myCollectionView];
+    [self endFresh];
+}
+
+- (void)indexMixedDataRequestFailed:(BOOL)isUseCache userData:(id)userData
+{
+    if (isLoading) {
+        //下拉失败则保持老数据
+        backView.status = Hidden;
+        [self endFresh];
+    }else{
+        backView.status = Failed;
+    }
+}
+
+#pragma mark - 精彩推荐
+- (void)wonderfulRecommendRequestSuccess:(NSDictionary *)dataDic pageCount:(NSInteger)pageCount isUseCache:(BOOL)isUseCache userData:(id)userData
+{
+    //检测数据
+    if (![[MyVerifyDataValid instance] verifySearchResultListData:dataDic]) {
+        //        NSLog(@"精彩推荐数据有误");
+        [self wonderfulRecommendRequestFailed:pageCount isUseCache:isUseCache userData:userData];
+        return;
+    }
+    
+    if (!moreDataArray) moreDataArray = [NSMutableArray array];
+    
+    //成功处理
+    isRequesting = NO;
+    hasNextPage = [[[dataDic objectForKey:@"flag"] objectForKey:@"dataend"] isEqualToString:@"y"]?YES:NO;
+    morePage+=([[[dataDic objectForKey:@"flag"] objectForKey:@"dataend"] isEqualToString:@"y"]?1:0);
+    
+    
+    NSArray *tmpArray = [dataDic objectForKey:@"data"];
+    [moreDataArray addObjectsFromArray:tmpArray];
+    //刷新界面
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    [myCollectionView reloadSections:[NSIndexSet indexSetWithIndex:15]];
+    [CATransaction commit];
+    
+}
+- (void)wonderfulRecommendRequestFailed:(NSInteger)pageCount isUseCache:(BOOL)isUseCache userData:(id)userData
+{
+    isRequesting = NO;
+    [self freshLoadingCell:CollectionCellRequestStyleFailed];
+}
+
+- (void)freshLoadingCell:(CollectionCellRequestStyle)state
+{
+    [myCollectionView.visibleCells enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
+        if ([obj isKindOfClass:[LoadingCollectionCell class]]){
+            *stop = YES;
+            LoadingCollectionCell * cell = obj;
+            cell.style = state;
+        }
+    }];
+}
+
+
+- (void)baoguang{
+    
+    NSMutableArray *appidArray;
+    NSMutableArray *appdigidArray;
+    if (!appidArray) appidArray = [NSMutableArray array];
+    if (!appdigidArray) appdigidArray = [NSMutableArray array];
+    
+    for (id cell in myCollectionView.visibleCells) {
+        if ([cell isKindOfClass:[PublicCollectionCell class]]) {
+            PublicCollectionCell *tmpCell = cell;
+            [appidArray addObject:tmpCell.appID];
+            [appdigidArray addObject:tmpCell.appdigitalid];
+        }
+    }
+    [[ReportManage instance] reportAppBaoGuang:HOME_PAGE_RECOMMEND_MY((long)-1, (long)-1) appids:appidArray digitalIds:appdigidArray];
+}
+
+
+#pragma mark - 推详情
+- (void)pushToAppDetailViewWithAppInfor:(NSDictionary *)inforDic andSoure:(NSString *)source{
+    [detailVC setAppSoure:source];
+    [detailVC beginPrepareAppContent:inforDic];
+    [self.navigationController pushViewController:detailVC animated:YES];
+}
+#pragma mark - 远程推送
+- (void)clickRemotePush:(NSNotification *)noti{
+    if (!noti.object) {
+        return;
+    }
+    [_navigationController popToRootViewControllerAnimated:NO];
+    
+    NSString *type = [noti.object objectForKey:@"push_type"];
+    NSString  *ID = [noti.object objectForKey:@"push_detail"];
+    if([type isEqualToString:REMOTE_PUSH_APP]&&ID){
+        
+        //应用详情
+        [detailVC setAppSoure:REMOTE_PUSH];
+        [detailVC beginPrepareAppContent:@{@"appid": ID}];
+        [_navigationController pushViewController:detailVC animated:YES];
+        
+        [[ReportManage instance] reportRemoteNotificationClickedWithType:type andContentid:ID];
+    }else{
+        [[ReportManage instance] reportRemoteNotificationClickedWithType:@"normal" andContentid:@"normal"];
+    }
+}
+@end

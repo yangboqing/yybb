@@ -1,0 +1,1020 @@
+//
+//  FindListViewController.m
+//  KY20Version
+//
+//  Created by liguiyang on 14-5-19.
+//  Copyright (c) 2014年 lgy. All rights reserved.
+//
+
+#if ! __has_feature(objc_arc)
+#error This file must be compiled with ARC. Either turn on ARC for the project or use -fobjc-arc flag
+#endif
+
+#import "FindListViewController_my.h"
+#import "FindDetailViewController_my.h" // 发现详情页
+// 轮播图
+#import "CarouselView.h"
+
+//#import "DetailViewController.h"
+#import "CustomNavigationBar.h"
+// 加载、失败页
+#import "CollectionViewBack.h"
+#import "GifView.h"
+#import "FindCell.h"
+#import "TableViewLoadingCell.h"
+#import "AlertLabel.h"
+
+#import "SearchManager.h"
+#import "EGORefreshTableHeaderView.h"
+#import "UIWebViewController.h"
+#import "TopicDetailsViewController.h"//专题详情
+
+#import "LocalImageManager.h"
+
+#import "MyServerRequestManager.h"
+#import "SearchResult_DetailViewController.h"
+
+#define HEIGHT_CELL 92
+#define HEIGHT_BOTTOM 47
+#define TAG_CELL_LUNBO 123
+#define TAG_CELL_CONTENT 124
+#define TAG_CELL_NULL 125
+
+
+@interface FindListViewController_my ()<UIScrollViewDelegate,UITableViewDataSource,UITableViewDelegate,EGORefreshTableHeaderDelegate,SearchManagerDelegate,MyServerRequestManagerDelegate,CarouselViewDelegate>
+{
+    // data
+    NSArray *loopingPicturesArr; // 轮播图
+    NSMutableArray *infoArray; // 活动数据
+    NSMutableArray *infoStateArray; //活动点击状态数组（与infoArray对应)
+    NSMutableArray *exposureArray; // 曝光数组
+    
+    // UI
+    UILabel *loopingLine;
+ // 轮播图
+    CarouselView*loopingView;
+    
+    // loading、failed
+    CollectionViewBack * _backView;
+    UIView *footerView;
+    
+    NSInteger pageNumber;
+    BOOL hasNextData; // 是否有下页数据
+    BOOL couldPullRefreshFlag; // 是否请求中
+    BOOL hasReportFlag; // 是否已上报数据
+    BOOL scrollEndFlag; // 是否滚动停止
+    BOOL hasReceivedDataFlag; // 已经返回数据
+    BOOL firstRequse;
+    BOOL lunbo;//轮播上报
+    // 下拉刷新
+    EGORefreshTableHeaderView * _refreshHeader;
+    UIWebViewController *webView;
+    TopicDetailsViewController *topicDetailsView;
+
+    BOOL isLoading;
+    AlertLabel *alertLabel;
+    
+    UIImage *default_findImage;
+    CellRequestStyle lastCellStyle;
+    FindColumnType findColumnType;
+    NSString *reqIdentifier;
+    NSString *reqNoCacheIdentifier;
+    SearchResult_DetailViewController *detailVC;//app详情页面
+
+}
+
+@property (nonatomic, strong) UITableView *findTableView;;
+@property (nonatomic, strong) NSMutableArray *activityArray; //本地存储的活动id
+
+@end
+
+@implementation FindListViewController_my
+
+-(instancetype)initWithFindColumnType:(FindColumnType)columnType
+{
+    self = [super init];
+    if (self) {
+        // 请求数据初始化
+        findColumnType = columnType;
+        reqIdentifier = [NSString stringWithFormat:@"%dTypeReq",columnType];
+        reqNoCacheIdentifier = [NSString stringWithFormat:@"%dTypeNoCacheReq",columnType];
+        
+        infoArray = [NSMutableArray array];
+        infoStateArray = [NSMutableArray array];
+        exposureArray = [NSMutableArray array];
+        
+        // 合并类移植
+        default_findImage = [UIImage imageNamed:@"default_discovery.png"];
+    }
+    
+    return self;
+}
+
+#pragma mark - initialization
+
+-(void)initLoopingPictures
+{ // 轮播图
+    CGFloat topHeight = IOS7?64:0;
+   
+    loopingView=[[CarouselView alloc] initWithFrame:CGRectMake(0, topHeight, MainScreen_Width, lunboHeight)];
+    loopingView.delegate=self;
+}
+- (void)carouselViewClick:(NSInteger)index{
+    
+    if (!IS_NSARRAY(loopingPicturesArr) || !loopingPicturesArr.count) return;
+    
+    NSDictionary *tmpDic = [loopingPicturesArr objectAtIndex:index];
+    NSString *typeStr = [tmpDic objectForKey:LUNBO_LINK];
+    
+    // 汇报点击量
+    NSString *source = HOME_PAGE_LUNBO(LUNBO_DISCOVERY, (long)index);
+    [[ReportManage instance] reportOtherDetailClick:source appid:[tmpDic objectNoNILForKey:@"id"]];
+    
+    // 设置点击事件
+    if ([typeStr isEqualToString:@"app"]) {
+        //应用
+        NSDictionary *appDataDic = [tmpDic objectForKey:LUNBO_LINK_DETAIL];
+        if (SHOW_REAL_VIEW_FLAG&&!DIRECTLY_GO_APPSTORE) {
+            [self pushToAppDetailViewWithAppInfor:appDataDic andSoure:@"find_lunbo"];
+        }else{
+            [[NSNotificationCenter  defaultCenter] postNotificationName:OPEN_APPSTORE object:[appDataDic objectForKey:APPDIGITALID]];
+        }
+        
+    }else if ([typeStr isEqualToString:@"article"]) {
+        //文章
+        [self showDetailInformation:loopingPicturesArr[index] withSource:source shareImage:nil];
+        
+    }else if ([typeStr isEqualToString:@"mobileLink"]) {
+        //外链
+        NSString *mobileLink = [tmpDic objectForKey:LUNBO_LINK_DETAIL];
+        [webView navigation:mobileLink];
+        [webView setTitle:[tmpDic objectForKey:LUNBO_TITLE]];
+        [self pushDetailViewController:webView];
+
+    }else if ([typeStr isEqualToString:@"special"]) {
+        //专题
+        NSDictionary *specialDataDic = [tmpDic objectForKey:LUNBO_LINK_DETAIL];
+        [topicDetailsView setDataDic:specialDataDic andColorm:source];
+        [self pushDetailViewController:topicDetailsView];
+
+    }else if ([typeStr isEqualToString:@"safariLink"]) {
+        //safar外链
+        NSString *safariLink = [tmpDic objectForKey:LUNBO_LINK_DETAIL];
+        [[UIApplication sharedApplication] openURL:[NSURL URLWithString:safariLink]];
+    }
+    
+}
+-(void)carouselViewScroll:(NSInteger)index{
+    if (!lunbo) {
+        return;
+    }
+    if (loopingPicturesArr.count>0) {
+        
+        NSDictionary *dic = loopingPicturesArr[index];
+        NSString *source=[NSString new];
+        source=HOME_PAGE_LUNBO(LUNBO_DISCOVERY, (long)index);
+        
+        NSString*appid=[dic objectForKey:@"id"];
+        if (appid) {
+            NSArray*ary=[NSArray arrayWithObject:[dic objectForKey:@"id"]];
+            [[ReportManage instance]reportAppBaoGuang:source appids:ary digitalIds:nil];
+//            NSLog(@"baole------------------");
+        }
+    }
+}
+
+
+-(void)initAppDetailVC
+{
+}
+
+#pragma mark - RequestData
+
+-(void)initilizationRequest
+{
+//    if (pageNumber==1) {
+//        return;
+//    }
+    pageNumber = 1;
+//    [infoArray removeAllObjects];
+
+    // requestData
+    if (findColumnType==findColumn_informationType){
+        [self requestLoopingPicture]; // 轮播图
+        [self requestActivitiesData];
+    }
+    else
+    {
+        [self requestActivitiesData];
+    }
+}
+
+-(void)downRefreshRquest
+{
+    switch (findColumnType) {
+            
+        case findColumn_informationType:{ // 评测
+//            //--------------------------------
+            [[MyServerRequestManager getManager] requestCarouselDiagrams:lunBo_discoverType isUseCache:YES userData:reqNoCacheIdentifier];
+//            NSLog(@"－－－发现轮播请求");
+            [[MyServerRequestManager getManager] requestDiscoveryList:tagType_discoveryInformaton pageCount:1 isUseCache:YES userData:reqNoCacheIdentifier];
+            
+            
+        }
+            break;
+        case findColumn_evaluateType:{ // 活动
+            //--------------------------------
+
+            [[MyServerRequestManager getManager] requestDiscoveryList:tagType_discoveryEvaluation pageCount:1 isUseCache:YES userData:reqNoCacheIdentifier];
+
+            
+        }
+            break;
+        case findColumn_applePieType:{ // 苹果派
+            //--------------------------------
+
+//            [[MyServerRequestManager getManager] requestDiscoveryList:tagType_discoveryApplepie pageCount:1 isUseCache:YES userData:reqNoCacheIdentifier];
+
+            
+        }
+            break;
+        case findColumn_activityType:{ //资讯
+            //--------------------------------
+
+            
+            [[MyServerRequestManager getManager] requestDiscoveryList:tagType_discoveryActivity pageCount:1 isUseCache:YES userData:reqNoCacheIdentifier];
+
+        }
+            break;
+            
+        default:
+            break;
+    }
+    
+    //
+    [self hideRefreshLoading];
+}
+
+-(void)requestLoopingPicture
+{
+    [[MyServerRequestManager getManager] requestCarouselDiagrams:lunBo_discoverType isUseCache:YES userData:reqNoCacheIdentifier];
+//    NSLog(@"－－－轮播请求");
+}
+
+-(void)requestActivitiesData
+{
+    switch (findColumnType) {
+        case findColumn_informationType:{ // 评测
+//
+            
+            [[MyServerRequestManager getManager] requestDiscoveryList:tagType_discoveryInformaton pageCount:pageNumber isUseCache:YES userData:reqNoCacheIdentifier];
+
+        }
+            break;
+        case findColumn_evaluateType:{ // 活动
+            
+            
+            [[MyServerRequestManager getManager] requestDiscoveryList:tagType_discoveryEvaluation pageCount:pageNumber isUseCache:YES userData:reqNoCacheIdentifier];
+
+        }
+            break;
+        case findColumn_applePieType:{ // 苹果派
+            
+            
+//            [[MyServerRequestManager getManager] requestDiscoveryList:tagType_discoveryApplepie pageCount:pageNumber isUseCache:YES userData:reqNoCacheIdentifier];
+
+        }
+            break;
+        case findColumn_activityType:{ //资讯
+            
+            
+            [[MyServerRequestManager getManager] requestDiscoveryList:tagType_discoveryActivity pageCount:pageNumber isUseCache:YES userData:reqNoCacheIdentifier];
+
+        }
+            break;
+            
+        default:
+            break;
+    }
+    
+}
+
+#pragma mark - 曝光度
+
+-(void)reportAppBaoGuang
+{// 汇报曝光度
+    
+    [exposureArray removeAllObjects];
+    
+    UITableViewCell *cell;
+    for (cell in self.findTableView.visibleCells) {
+        if (cell.tag == TAG_CELL_CONTENT) {
+            NSString *acId = ((FindCell*)cell).identifier;
+            [exposureArray addObject:acId];
+        }
+    }
+    
+    NSString *type = [self getReportTypeName:findColumnType];
+    NSString *source = PRIVILEGE_ACTIVITY_MY(type, (long)-1);
+    
+    [[ReportManage instance] reportAppBaoGuang:source appids:exposureArray digitalIds:nil];
+//    NSLog(@"REPROT APPID: %@",exposureArray);
+}
+
+- (NSString *)getReportTypeName:(FindColumnType)columnType
+{
+    switch (columnType) {
+        case findColumn_evaluateType:
+            return DISCOVERY_PINGCE;
+            break;
+        case findColumn_activityType:
+            return DISCOVERY_ACTIVE;
+            break;
+        case findColumn_informationType:
+            return DISCOVERY_ZIXUN;
+            break;
+//        case findColumn_applePieType:
+//            return DISCOVERY_APPLEPIE;
+//            break;
+            
+        default:
+            break;
+    }
+    
+    return nil;
+}
+
+
+#pragma mark - pullRefresh Animaiton
+-(void)pullRefresh
+{
+    // 请求数据
+    [self showLastCellStyle:CellRequestStyleLoading];
+    [self requestActivitiesData];
+    
+}
+
+#pragma mark - Utility
+
+-(void)pushDetailViewController:(UIViewController*)VC
+{
+    if (self.delegate && [self.delegate respondsToSelector:@selector(findNavControllerPushViewController:)]) {
+        [self.delegate findNavControllerPushViewController:VC];
+    }
+}
+
+-(void)showloopingPictureDetailView:(NSInteger)index
+{ // loopingPicture block call;
+
+}
+
+-(void)showDetailInformation:(NSDictionary *)infoDic withSource:(NSString *)fromSource shareImage:(UIImage *)img
+{
+    NSArray*ary=[NSArray arrayWithObjects:infoDic,fromSource, nil];
+    [[NSNotificationCenter defaultCenter] postNotificationName:SHOW_FIND object:ary];
+    
+//    FindDetailViewController * findDetailViewController = [[FindDetailViewController alloc] init];
+//    findDetailViewController.fromSource = fromSource;
+//    findDetailViewController.shareImage = img;
+//    NSDictionary*dic=[[NSDictionary alloc] init];
+//    if (![infoDic objectForKey:@"content_url"]) {
+//        NSLog(@"没有文章 content_url");
+//        dic=[infoDic objectForKey:@"link_detail"];
+//
+//    }else{
+//        dic=infoDic;
+//    }
+//    
+//    findDetailViewController.content = [dic objectForKey:@"content_url"];
+//    [findDetailViewController reloadActivityDetailVC:dic ];
+//    [self pushDetailViewController:findDetailViewController];
+    
+    
+//    [self hideNavBottomBar:YES];
+}
+
+-(void)showWebPageInSafari:(NSString *)urlStr
+{
+    NSURL *url =  [NSURL URLWithString:urlStr];
+    if (url.absoluteString.length > 0) {
+        [[UIApplication sharedApplication] openURL:url];
+    }
+}
+
+-(void)setTableViewListData:(NSArray *)array userData:(NSString *)userData
+{ // 将请求回的数据添加到数据中，将其对应的是否点击过的状态也保存到数据中
+//    NSLog(@"----%d---%d",array.count,infoArray.count);
+    if (pageNumber==1) {
+            [infoArray removeAllObjects];
+    }
+    if (array == nil) {
+        return ;
+    }
+    
+    for ( int i= 0; i<array.count; i++) {
+        [infoArray addObject:array[i]];
+    }
+    [self refreshAcvitityStateArray];
+    
+    // 界面
+//    NSLog(@"----%d",infoArray.count);
+    [self.findTableView reloadData];
+    
+    // 下次请求页数+1
+    pageNumber++;
+}
+
+-(BOOL)isClickedActivityId:(NSString *)acId
+{
+    __block BOOL clickedFlag = NO;
+    [_activityArray enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
+        if ([obj isEqualToString:acId]) {
+            clickedFlag = YES;
+            *stop = YES;
+        }
+    }];
+    
+    return clickedFlag;
+}
+
+-(void)refreshAcvitityStateArray
+{ // 刷新与列表数据对应的状态数据（是否点击过）
+    [infoStateArray removeAllObjects];
+    
+    [infoArray enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
+        if ([self isClickedActivityId:[obj objectForKey:@"id"]]) {
+            [infoStateArray addObject:@"y"];
+        }
+        else
+        {
+            [infoStateArray addObject:@"n"];
+        }
+    }];
+}
+
+-(void)refreshStoredActivityArray
+{
+    self.activityArray = [[SearchManager getObject] getActivityIDs];
+}
+
+-(void)showLastCellStyle:(CellRequestStyle)style
+{
+    [self reloadLastCellStyle:style];
+}
+
+-(void)showDownRefreshFailedAlertLabel
+{
+    CGFloat originY = (IOS7)?64:0;
+    [alertLabel startAnimationFromOriginY:originY];
+}
+
+-(void)executeFailedCode:(NSString *)userData
+{
+    if (![userData isEqualToString:reqIdentifier] && ![userData isEqualToString:reqNoCacheIdentifier]) return;
+    
+    if (pageNumber != 1) {
+        // 上/下拉刷新失败
+        hasReceivedDataFlag = YES;
+        if (scrollEndFlag) {
+            scrollEndFlag = NO;
+            
+            couldPullRefreshFlag = YES;
+            [self showLastCellStyle:CellRequestStyleFailed];
+        }
+        
+        // 下拉刷新
+        if ([userData isEqualToString:reqNoCacheIdentifier]) {
+            [self showDownRefreshFailedAlertLabel];
+        }
+    }
+    else
+    {
+        _backView.status = Failed;
+    }
+}
+
+-(BOOL)checkDataEndFlag:(NSDictionary *)dataDic
+{
+    BOOL endFlag = NO;
+    if (IS_NSDICTIONARY([dataDic objectForKey:@"flag"])) {
+        NSString *flagStr = [[dataDic objectForKey:@"flag"] getNSStringObjectForKey:@"dataend"];
+        if (flagStr) {
+            endFlag = YES;
+        }
+    }
+    
+    return endFlag;
+}
+
+- (void)removeListener
+{
+    [[MyServerRequestManager getManager] removeListener:self];
+}
+
+#pragma mark - Check Data
+
+-(BOOL)checkData:(NSDictionary *)dataDic
+{
+    BOOL typeFlag = NO;
+    if (IS_NSDICTIONARY(dataDic)) {
+        
+        NSArray *tmpArr = [dataDic getNSArrayObjectForKey:@"data"];
+        if (tmpArr) {
+            for (id obj in tmpArr) {
+                if (IS_NSDICTIONARY(obj)) {
+                    if ([obj getNSStringObjectForKey:@"title"] &&
+                        [obj getNSStringObjectForKey:@"pic_url"] &&
+                        [obj getNSStringObjectForKey:@"date"] &&
+                        [obj getNSStringObjectForKey:@"view_count"] &&
+                        [obj getNSStringObjectForKey:@"content_url"] &&
+                        [obj getNSStringObjectForKey:@"id"])
+                    {
+                        typeFlag = YES;
+                    }
+                    else
+                    {
+                        typeFlag = NO;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
+    return typeFlag;
+}
+
+-(void)reloadLastCellStyle:(CellRequestStyle)style
+{
+    if (hasNextData) {
+        lastCellStyle = style;
+        NSUInteger lastIndex = infoArray.count+1;
+        [self.findTableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:lastIndex inSection:0]] withRowAnimation:UITableViewRowAnimationNone];
+    }
+}
+
+-(void)setCustomFrame
+{
+    CGFloat topHeight = (IOS7)?64:0;
+    CGFloat offset = (IOS7)?0:64;
+    CGRect frame = [UIScreen mainScreen].bounds;
+    CGRect rect = CGRectMake(0, 44, frame.size.width,frame.size.height-offset);
+    
+    self.findTableView.frame = rect;
+    _refreshHeader.frame = CGRectMake(0, -_findTableView.bounds.size.height+topHeight, _findTableView.bounds.size.width, _findTableView.bounds.size.height);
+    _backView.frame = rect;
+}
+
+
+#pragma mark - Table view data source and delegate
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView
+{
+    return 1;
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
+{
+    return hasNextData?infoArray.count+2:infoArray.count+1;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    if (indexPath.row == 0) { // 轮播图 或 空Cell
+        
+        if (findColumnType == findColumn_informationType) {
+            static NSString *loopingIden = @"cellLoopingIdentifier";
+            UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:loopingIden];
+            if (cell == nil) {
+                cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:loopingIden];
+                cell.selectionStyle = UITableViewCellSelectionStyleNone;
+                cell.tag = TAG_CELL_LUNBO;
+                [self initLoopingPictures];
+                
+                CGFloat topHeight = IOS7?64:0;
+                loopingLine = [[UILabel alloc] init];
+                loopingLine.frame = CGRectMake(10, topHeight+lunboHeight, self.view.frame.size.width-10, 0.5);
+                loopingLine.backgroundColor = hllColor(212, 212, 212, 1.0);
+                
+                [cell addSubview:loopingLine];
+                [cell addSubview:loopingView];
+            }
+            
+            return cell;
+        }
+        else
+        { // 空cell
+            static NSString *nullIden = @"NULLIdentifier";
+            UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:nullIden];
+            if (cell == nil) {
+                cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nullIden];
+                cell.selectionStyle = UITableViewCellSelectionStyleNone;
+                cell.tag = TAG_CELL_NULL;
+            }
+            
+            return cell;
+        }
+    }
+    else if(indexPath.row <= infoArray.count)
+    { // 内容cell
+        static NSString *CellIdentifier = @"ChoiceCellIden";
+        FindCell *cell = [tableView dequeueReusableCellWithIdentifier:CellIdentifier];
+        
+        if (cell == nil) {
+            cell = [[FindCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:CellIdentifier];
+            cell.tag = TAG_CELL_CONTENT;
+        }
+        
+        // set value
+        NSDictionary *infoDic = infoArray[indexPath.row-1];
+        cell.titleLabel.text = [infoDic objectForKey:@"title"];
+        cell.timeLabel.text  = [infoDic objectForKey:@"date"];
+        cell.identifier = [infoDic objectForKey:@"id"];
+        
+        // 缩略图
+        NSString *picUrl = [infoDic objectForKey:@"pic_url"];
+        [cell.thumbnailView sd_setImageWithURL:[NSURL URLWithString:picUrl] placeholderImage:default_findImage];
+        
+        // 颜色样式
+        if ([infoStateArray[indexPath.row-1] isEqualToString:@"y"]) {
+            [cell setClickState:Click_YES];
+        }
+        else
+        {
+            [cell setClickState:Click_NO];
+        }
+        
+        //
+        [cell setCustomFrame];
+        
+        return cell;
+    }
+    
+    // lastCell
+    static NSString *cellLoadingIden = @"LoadingCellIdentifier";
+    TableViewLoadingCell *cell_loading = [tableView dequeueReusableCellWithIdentifier:cellLoadingIden];
+    if (cell_loading == nil) {
+        cell_loading = [[TableViewLoadingCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellLoadingIden];
+        cell_loading.tag = TAG_CELL_NULL;
+        cell_loading.identifier = nil;
+    }
+    
+    [cell_loading setStyle:lastCellStyle];
+    
+    return cell_loading;
+}
+
+-(CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    CGFloat topHeight = IOS7?64:0;
+    
+    if (findColumnType == findColumn_informationType) { // 评测
+        if (indexPath.row == 0) {
+            return lunboHeight+topHeight+0.5;
+        }
+        else if (indexPath.row <= infoArray.count)
+        {
+            return HEIGHT_CELL;
+        }
+        
+        return 44;
+    }
+    
+    // 评测、资讯、苹果派
+    if (indexPath.row==0) {
+        return topHeight;
+    }
+    else if (indexPath.row <= infoArray.count) {
+        return HEIGHT_CELL;
+    }
+    
+    return 44;
+}
+
+-(void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    
+    if (indexPath.row>0 && indexPath.row <= infoArray.count) {
+        
+        NSDictionary *dic = infoArray[indexPath.row-1];
+        NSString *picUrlKey = [dic objectForKey:@"pic_url"];
+        if (findColumnType == findColumn_informationType) {
+        }
+        
+        NSString *type = [self getReportTypeName:findColumnType];
+        NSString *source = PRIVILEGE_ACTIVITY_MY(type, (long)indexPath.row);
+        
+
+        [self showDetailInformation:dic withSource:source shareImage:[[SDImageCache sharedImageCache] imageFromDiskCacheForKey:picUrlKey]];
+        // 刷新列表选中界面
+        [[SearchManager getObject] storeActivityId:[dic objectForKey:@"id"]];
+        [self refreshStoredActivityArray];
+        [self refreshAcvitityStateArray];
+        [self.findTableView reloadData];
+
+//
+        // 汇报点击DEVELOPER_OTHER_APP
+        [[ReportManage instance]reportOtherDetailClick:source appid:[dic objectForKey:@"id"]];
+
+    }
+}
+
+-(CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section
+{
+    return BOTTOM_HEIGHT;
+}
+
+-(UIView *)tableView:(UITableView *)tableView viewForFooterInSection:(NSInteger)section
+{
+    return footerView;
+}
+
+#pragma mark - UIScrollViewDelegate
+-(void)scrollViewDidScroll:(UIScrollView *)scrollView
+{
+    [_refreshHeader egoRefreshScrollViewDidScroll:scrollView];
+    
+    // 上拉刷新
+    CGFloat refreshHeight = self.view.frame.size.height+49; // 底部导航条的高度
+    if (couldPullRefreshFlag && hasNextData && scrollView.contentSize.height-scrollView.contentOffset.y < refreshHeight) {
+        
+        couldPullRefreshFlag = NO;
+        scrollEndFlag = NO;
+        hasReceivedDataFlag = NO;
+        
+        [self pullRefresh];
+    }
+    
+}
+
+- (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate{
+    [_refreshHeader egoRefreshScrollViewDidEndDragging:scrollView];
+    
+    hasReportFlag = NO;
+    if (!decelerate) {
+        hasReportFlag = YES;
+        // 曝光量
+        [self reportAppBaoGuang];
+        
+        // 展示失败cell
+        scrollEndFlag = YES;
+        if (hasReceivedDataFlag) {
+            hasReceivedDataFlag = NO;
+            couldPullRefreshFlag = YES;
+            
+            [self showLastCellStyle:CellRequestStyleFailed];
+        }
+    }
+}
+
+-(void)scrollViewDidEndDecelerating:(UIScrollView *)scrollView
+{
+    if (!hasReportFlag) {
+        hasReportFlag = YES;
+        // 曝光量
+        [self reportAppBaoGuang];
+        
+        // 展示失败cell
+        scrollEndFlag = YES;
+        if (hasReceivedDataFlag) {
+            hasReceivedDataFlag = NO;
+            couldPullRefreshFlag = YES;
+            
+            [self showLastCellStyle:CellRequestStyleFailed];
+        }
+    }
+}
+
+-(void)scrollViewWillEndDragging:(UIScrollView *)scrollView withVelocity:(CGPoint)velocity targetContentOffset:(inout CGPoint *)targetContentOffset
+{
+    if (scrollView.contentOffset.y<-(_findTableView.contentInset.top+65)) {
+        *targetContentOffset = scrollView.contentOffset;
+    }
+}
+
+#pragma mark - 下拉刷新
+
+- (void)egoRefreshTableHeaderDidTriggerRefresh:(EGORefreshTableHeaderView *)view{
+    isLoading = YES;
+    firstRequse=NO;
+    [self initilizationRequest];
+    [self performSelector:@selector(downRefreshRquest) withObject:nil afterDelay:delayTime];
+}
+
+- (BOOL)egoRefreshTableHeaderDataSourceIsLoading:(EGORefreshTableHeaderView *)view{
+    return isLoading;
+}
+
+- (void)hideRefreshLoading{
+    isLoading = NO;
+    [_refreshHeader egoRefreshScrollViewDataSourceDidFinishedLoading:_findTableView];
+}
+
+#pragma mark - MarketServerDelegate（轮播_精选、评测、资讯、苹果派）
+
+- (void)carouselDiagramsRequestSuccess:(NSDictionary *)dataDic type:(lunBoType)type isUseCache:(BOOL)isUseCache userData:(id)userData{ // 轮播图
+    
+    if (type != lunBo_discoverType) return;
+    if (findColumnType!=findColumn_informationType) return; // 非评测返回
+    if (![[MyVerifyDataValid instance] checkLunboData:dataDic]) return; // 数据有效性检测
+
+    loopingPicturesArr = [dataDic objectForKey:@"data"];
+    [loopingView setCarous_dataSource:loopingPicturesArr];
+    [self.findTableView reloadData];
+
+}
+
+- (void)categoryAppGameRequestFailed:(TagType)tagType pageCount:(NSInteger)pageCount isUseCache:(BOOL)isUseCache userData:(id)userData
+{
+        if (findColumnType!=findColumn_informationType) return;
+//        NSLog(@"loopPlayRequestFail: %@",userData);
+//    }
+}
+//网络请求
+- (void)discoveryRequestSuccess:(NSDictionary *)dataDic TagType:(TagType)tagType pageCount:(NSInteger)pageCount isUseCache:(BOOL)isUseCache userData:(id)userData{
+    NSArray*ary=[dataDic objectForKey:@"data"];
+    
+         if (![reqNoCacheIdentifier isEqualToString:userData]) return;
+
+//    NSLog(@"chenggong－－－%@",userData);
+//    NSLog(@"----%@,---%@",dataDic,ary);
+    
+    // 是否有下一页 标识
+    if ([self checkDataEndFlag:dataDic]&&ary.count>9) {
+        if ([[[dataDic objectForKey:@"flag"] objectForKey:@"dataend"] isEqualToString:@"y"]) {
+            hasNextData = YES;
+            couldPullRefreshFlag = YES;
+        }
+        else
+        {
+            hasNextData = NO;
+            couldPullRefreshFlag = NO;
+        }
+    }
+    else
+    {
+        hasNextData = NO;
+        lastCellStyle = CellRequestStyleFailed;
+        [self.findTableView reloadData];
+    }
+    
+    // 验证数据类型
+    if ([self checkData:dataDic]) {
+//        NSLog(@"shujujiance");
+        if (pageCount==1) {
+            [infoArray removeAllObjects];
+        }
+        [self setTableViewListData:[dataDic objectForKey:@"data"] userData:userData];
+    }else if(pageCount==1){
+        _backView.status=Failed;
+    }
+    
+    // 初次请求成功
+    if (pageNumber == 2) {
+        _backView.status = Hidden;;
+    }
+//-----------------------------
+    
+    
+    
+}
+- (void)discoveryRequestFailed:(TagType)tagType pageCount:(NSInteger)pageCount isUseCache:(BOOL)isUseCache userData:(id)userData{
+//    [self executeFailedCode:userData];
+    if (![reqNoCacheIdentifier isEqualToString:userData]) return;
+//    NSLog(@"shibai");
+    if (firstRequse) {
+        _backView.status=Failed;
+
+    }
+}
+#pragma mark - 推详情
+- (void)pushToAppDetailViewWithAppInfor:(NSDictionary *)inforDic andSoure:(NSString *)source{
+    [detailVC setAppSoure:source];
+    [detailVC beginPrepareAppContent:inforDic];
+    [self.navigationController pushViewController:detailVC animated:YES];
+}
+#pragma mark - Life Cycle
+- (void)viewDidLoad
+{
+    [super viewDidLoad];
+    
+    self.view.backgroundColor = [UIColor grayColor];
+    lunbo=YES;
+    [[MyServerRequestManager getManager]addListener:self];
+    firstRequse=YES;
+    if (IOS7) {
+        self.automaticallyAdjustsScrollViewInsets = NO;
+    }
+    
+    // 初始化主界面
+    UITableView *tableView = [[UITableView alloc] init];
+    tableView.dataSource = self;
+    tableView.delegate = self;
+    tableView.showsVerticalScrollIndicator = NO;
+    tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+    [self.view addSubview:tableView];
+    self.findTableView = tableView;
+    webView = [UIWebViewController new];
+    topicDetailsView = [TopicDetailsViewController defaults];
+
+    
+    _refreshHeader = [[EGORefreshTableHeaderView alloc] initWithFrame:CGRectZero];
+    _refreshHeader.egoDelegate = self;
+    _refreshHeader.backgroundColor=[UIColor whiteColor];
+    _refreshHeader.inset = self.findTableView.contentInset;
+    [self.findTableView addSubview:_refreshHeader];
+    
+    alertLabel = [[AlertLabel alloc] init];
+    [self.view addSubview:alertLabel];
+    
+    _backView = [CollectionViewBack new];
+    __weak typeof(self) mySelf = self;
+    [_backView setClickActionWithBlock:^{
+        [mySelf performSelector:@selector(initilizationRequest) withObject:nil afterDelay:delayTime];
+    }];
+    [self.view addSubview:_backView];
+    _backView.status = Loading;
+
+    // setFrame
+    [self setCustomFrame];
+    
+    // tableview footer
+    footerView = [[UIView alloc] init];
+    footerView.backgroundColor = [UIColor clearColor];
+    
+    [self initAppDetailVC];
+    detailVC = [[SearchResult_DetailViewController alloc]init];
+
+}
+
+-(void)viewWillAppear:(BOOL)animated
+{
+    [super viewWillAppear:animated];
+
+}
+
+-(void)viewDidAppear:(BOOL)animated
+{
+    [super viewDidAppear:animated];
+//    [self hideNavBottomBar:NO];
+//    NSLog(@"进来");
+    lunbo=YES;
+    // 刷新存储的活动id(被点击过的)
+    [self refreshStoredActivityArray];
+    [self refreshAcvitityStateArray];
+    [self.findTableView reloadData];
+    
+    self.navigationController.interactivePopGestureRecognizer.enabled = NO;
+
+}
+
+- (void)viewWillDisappear:(BOOL)animated{
+    [super viewWillDisappear:animated];
+    //    [self.navigationController setNavigationBarHidden:NO animated:animated];
+//    NSLog(@"推出");
+    lunbo=NO;
+}
+- (void)viewDidDisappear:(BOOL)animated{
+    [super viewDidDisappear:animated];
+    
+}
+
+- (void)didReceiveMemoryWarning
+{
+    [super didReceiveMemoryWarning];
+    // Dispose of any resources that can be recreated.
+}
+
+-(void)dealloc
+{
+    self.findTableView.delegate = nil;
+    self.findTableView.dataSource = nil;
+    self.findTableView = nil;
+    
+    loopingView.delegate = nil;
+    loopingView = nil;
+    
+    _backView = nil;
+    footerView = nil;
+    
+    _refreshHeader.egoDelegate = nil;
+    _refreshHeader = nil;
+    
+    webView.delegate = nil;
+    webView = nil;
+    
+    topicDetailsView = nil;
+    alertLabel = nil;
+    
+    loopingPicturesArr = nil;
+    infoArray = nil;
+    infoStateArray = nil;
+    exposureArray = nil;
+}
+-(void)hideNavBottomBar:(BOOL)flag
+{
+    self.navigationController.navigationBar.hidden = flag;
+    [[NSNotificationCenter defaultCenter] postNotificationName:HIDETABBAR object:(flag?@"yes":nil)];
+}
+@end

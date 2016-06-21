@@ -1,0 +1,351 @@
+//
+//  MyNavigationController.m
+//  MyAssistant
+//
+//  Created by liguiyang on 14-11-24.
+//  Copyright (c) 2014年 myAssistant. All rights reserved.
+//
+
+#import "MyNavigationController.h"
+#import "ChargeFreeViewController.h" // chargeFreeView中自定义的navBar
+#import "MarketAppGameViewController_my.h" // 处理其中自定义的navBar
+#import "SimilarNavigationView.h"
+#import "WallpaperInfoViewController.h" // 壁纸详情（手势冲突）
+#import "SearchListViewController.h" // 是指手势冲突
+
+// 禁用滑动返回HomeViewController
+#import "ResourceHomeViewController.h" // 禁止滑动返回
+#import "MirrorViewController.h" // 高清镜子
+#import "FindViewController_my.h" // 发现navigationBar
+#import "WallPaperListViewController.h" // 壁纸
+#import "HomeViewController.h" // 首页
+#import "FindDetailViewController_my.h"
+
+#define WINDOW [[UIApplication sharedApplication] keyWindow]
+
+@interface MyNavigationController ()
+{
+    CGPoint startPoint; // 开始拖动时坐标
+    BOOL isMoving; // 是否在拖动中
+    
+    UIImageView *screenShotView; // 需展示的截屏Img
+    UIView *blackMask; // 黑色遮罩
+    
+    UIPanGestureRecognizer *panGesRecognizer;//右滑返回手势
+    //
+    UIViewController *currentShowVC; // 当前显示view(解决截屏黑块的问题)
+    UIView *statusBar; // 解决发现状态栏bug
+    
+    // 解决push时滑动下层界面返回的bug
+    BOOL couldSlideFlag;
+    BOOL touchBeginFlag;
+    dispatch_source_t timer;
+}
+
+@property (nonatomic, strong) UIView *backgroundView; // 背景
+@property (nonatomic, strong) NSMutableArray *screenShotList; // 存取截图的数组
+
+@end
+
+@implementation MyNavigationController
+
+-(instancetype)initWithRootViewController:(UIViewController *)rootViewController
+{
+    self = [super initWithRootViewController:rootViewController];
+    if (self) {
+        
+        // 标题颜色
+        self.screenShotList = [NSMutableArray array];
+    }
+    
+    return self;
+}
+
+#pragma mark - Life Cycle
+
+-(void)viewDidLoad
+{
+    [super viewDidLoad];
+    // UI
+    [self.navigationBar setTitleTextAttributes:@{NSFontAttributeName:[UIFont systemFontOfSize:18.0],NSForegroundColorAttributeName:[UIColor blackColor]}];
+    
+    NSDictionary* textAttributes = [NSDictionary dictionaryWithObjectsAndKeys:
+                                    [UIColor colorWithRed:93.f/255 green:86.f/255 blue:127.f/255 alpha:1],NSForegroundColorAttributeName,
+                                    [UIFont systemFontOfSize:15.5],NSFontAttributeName,
+                                    nil,NSShadowAttributeName,
+                                    nil];
+    [[UIBarButtonItem appearance] setTitleTextAttributes:textAttributes forState:0];
+    [[UIBarButtonItem appearance] setBackButtonTitlePositionAdjustment:UIOffsetMake(2, -1)
+                                                         forBarMetrics:UIBarMetricsDefault];
+    // function
+    panGesRecognizer = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(panGestureRecognizerReceiver:)];
+    panGesRecognizer.maximumNumberOfTouches = 1;
+//    [self.view addGestureRecognizer:panGesRecognizer];
+    
+    // initilization
+    couldSlideFlag = YES;
+}
+
+-(void) viewDidDisappear:(BOOL)animated {
+    [super viewDidDisappear:animated];
+    
+}
+
+#pragma mark - Utility
+
+-(void)panGestureRecognizerReceiver:(UIPanGestureRecognizer *)recognizer
+{
+    if (!couldSlideFlag) return;
+    if (self.viewControllers.count <= 1) return;
+    
+    CGPoint touchPoint = [recognizer locationInView:WINDOW];
+    
+    if (recognizer.state == UIGestureRecognizerStateBegan) {
+        
+        startPoint = touchPoint;
+        isMoving = YES;
+        touchBeginFlag = YES;
+        
+        if (!self.backgroundView) {
+            
+            self.backgroundView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.frame.size.width, self.view.frame.size.height)];
+            [self.view.superview insertSubview:_backgroundView belowSubview:self.view];
+            
+            screenShotView = [[UIImageView alloc] initWithFrame:_backgroundView.frame];
+            [self.backgroundView addSubview:screenShotView];
+            
+            blackMask = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.frame.size.width, self.view.frame.size.height)];
+            blackMask.backgroundColor = [UIColor blackColor];
+            [self.backgroundView addSubview:blackMask];
+        }
+        
+        screenShotView.image = [_screenShotList lastObject];
+        
+    }
+    else if (recognizer.state == UIGestureRecognizerStateEnded)
+    {
+        isMoving = NO;
+        if (!touchBeginFlag) return;
+        touchBeginFlag = NO;
+        if (touchPoint.x-startPoint.x > 50) {
+            [UIView animateWithDuration:0.3 animations:^{
+                [self moveViewWithX:self.view.frame.size.width];
+            } completion:^(BOOL finished) {
+                
+                [self popViewControllerAnimated:NO];
+                CGRect frame = self.view.frame;
+                frame.origin.x = 0;
+                self.view.frame = frame;
+                
+                [self.view.superview sendSubviewToBack:_backgroundView];
+                
+            }];
+        }
+        else
+        {
+            [UIView animateWithDuration:0.3 animations:^{
+                [self moveViewWithX:0.0];
+            } completion:^(BOOL finished) {
+                
+                blackMask.hidden = YES;
+                [self.view.superview sendSubviewToBack:_backgroundView];
+            }];
+        }
+    }
+    else if (recognizer.state == UIGestureRecognizerStateCancelled)
+    {
+        isMoving = NO;
+        [UIView animateWithDuration:0.3 animations:^{
+            [self moveViewWithX:0.0];
+        } completion:^(BOOL finished) {
+            
+            blackMask.hidden = YES;
+            [self.view.superview sendSubviewToBack:_backgroundView];
+            
+        }];
+    }
+    
+    if (isMoving) {
+        [self moveViewWithX:touchPoint.x-startPoint.x];
+    }
+}
+- (void)moveViewWithX:(float)x
+{
+    x = x>self.view.frame.size.width?self.view.frame.size.width:x;
+    x = x<0?0:x;
+    
+    CGRect frame = self.view.frame;
+    frame.origin.x = x;
+    self.view.frame = frame;
+    
+    float scale = (x/6400)+0.95;
+    float alpha = 0.4 - (x/800);
+    
+    screenShotView.transform = CGAffineTransformMakeScale(scale, scale);
+    blackMask.alpha = alpha;
+}
+
+- (void)prepairScreenShot:(UIViewController *)curVC
+{
+    if ([curVC isKindOfClass:[UIViewController class]]) {
+        currentShowVC = curVC;
+    }
+    else
+    {
+        currentShowVC = nil;
+    }
+}
+
+- (UIImage *)screenShot
+{
+    self.navigationBar.barTintColor = [UIColor whiteColor];
+    [self setCustomNavBarBgColor:[UIColor whiteColor]];
+    
+    // screen shot
+    UIGraphicsBeginImageContextWithOptions(self.view.frame.size, NO, 0);
+    [self.view.layer renderInContext:UIGraphicsGetCurrentContext()];
+    UIImage *screenImg = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    
+    
+    self.navigationBar.barTintColor = nil;
+    [self setCustomNavBarBgColor:nil];
+    if (statusBar) {
+        [statusBar removeFromSuperview];
+        statusBar = nil;
+    }
+    
+    // 截图完毕置空
+    currentShowVC = nil;
+    
+    return screenImg;
+}
+
+-(void)addSlidingGesture
+{
+    __block BOOL addFlag = YES;
+    NSArray *gesArr = self.view.gestureRecognizers;
+    [gesArr enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
+        if ([obj isEqual:panGesRecognizer]) {
+            addFlag = NO;
+            *stop = YES;
+        }
+    }];
+    
+    if (addFlag) {
+        [self.view addGestureRecognizer:panGesRecognizer];
+    }
+}
+
+-(void)cancelSlidingGesture
+{
+    __block BOOL removeFlag = NO;
+    NSArray *gesArr = self.view.gestureRecognizers;
+    [gesArr enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
+        if ([obj isEqual:panGesRecognizer]) {
+            removeFlag = YES;
+            *stop = YES;
+        }
+    }];
+    
+    if (removeFlag) {
+        [self.view removeGestureRecognizer:panGesRecognizer];
+        
+    }
+}
+
+- (void)setCustomNavBarBgColor:(UIColor *)color
+{ // 处理自定义NavBar
+    
+    // SimilarNavigationView.h
+    if (currentShowVC == nil) return;
+    if ([self.topViewController isKindOfClass:[ChargeFreeViewController class]] ||
+        [self.topViewController isKindOfClass:[MarketAppGameViewController_my class]] ||
+        [self.topViewController isKindOfClass:[FindViewController_my class]]) {
+        for (id obj in self.topViewController.view.subviews) {
+            if ([obj isKindOfClass:[SimilarNavigationView class]]) {
+                ((SimilarNavigationView*)obj)->toolbar.barTintColor = color;
+            }
+        }
+    }
+}
+
+- (void)disablePanGestureForMoment
+{
+    // disable pan gesture
+    couldSlideFlag = NO;
+    
+    // set timer
+    timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+    dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, 1*NSEC_PER_SEC), NSEC_PER_SEC, 0);
+    dispatch_source_set_event_handler(timer, ^{
+        dispatch_source_cancel(timer);
+    });
+    dispatch_source_set_cancel_handler(timer, ^{
+        // enable pan gesture
+        couldSlideFlag = YES;
+    });
+    dispatch_resume(timer);
+}
+
+#pragma mark - OverWrite
+
+-(void)pushViewController:(UIViewController *)viewController animated:(BOOL)animated
+{
+    // push期间禁用滑动手势
+    [self disablePanGestureForMoment];
+    
+    // 截图
+    [self.screenShotList addObject:[self screenShot]];
+    
+    // 手势冲突
+    NSUInteger count = self.viewControllers.count;
+    if (count<=0) {
+        [self cancelSlidingGesture];
+    }
+    else
+    {
+        [self cancelSlidingGesture];
+        [self addSlidingGesture];
+    }
+
+    // 市场、高清镜子、应用咨询 禁用滑动返回
+    if ([viewController isMemberOfClass:[ResourceHomeViewController class]] ||
+        [viewController isMemberOfClass:[MirrorViewController class]] ||
+        [viewController isMemberOfClass:[FindViewController_my class]]) {
+        [self cancelSlidingGesture];
+    }
+    
+    // 高清壁纸 禁用滑动返回
+    if ([self.topViewController isMemberOfClass:[HomeViewController class]] && [viewController isMemberOfClass:[WallPaperListViewController class]]) {
+        [self cancelSlidingGesture];
+    }
+    
+    if([viewController isKindOfClass:[FindDetailViewController_my class]]){
+        [self cancelSlidingGesture];
+    }
+    
+    // 壁纸详情手势
+    if ([viewController isKindOfClass:[WallpaperInfoViewController class]]) {
+        [self cancelSlidingGesture];
+    }
+    
+    [super pushViewController:viewController animated:animated];
+}
+
+-(UIViewController *)popViewControllerAnimated:(BOOL)animated
+{
+    [self.screenShotList removeLastObject];
+    screenShotView.image = nil;
+    
+    // 删除listener
+    [[MyServerRequestManager getManager] removeListener:(id<MyServerRequestManagerDelegate>)self.topViewController];
+    
+    if (self.viewControllers.count == 2) {
+        [self cancelSlidingGesture];
+    }
+    
+    return [super popViewControllerAnimated:animated];
+}
+
+@end

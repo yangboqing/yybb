@@ -1,0 +1,223 @@
+//
+//  ClassificationBackView.m
+//  MyHelper
+//
+//  Created by 李环宇 on 14-12-18.
+//  Copyright (c) 2014年 myHelper. All rights reserved.
+//
+
+#import "ClassificationBackView.h"
+#import "collectionviewBack.h"
+#import "ClassificationViewController.h"
+static NSString *classificationCell = @"ClassificationCell";
+static NSString *wallpaperClassificationCell=@"WallpaperClassificationCell";
+
+@implementation ClassificationBackView{
+
+    UICollectionView *myCollectionView;
+    NSString *CellIdentifier; //cell标识符
+    UIButton*btn_1;
+    UIButton*btn_2;
+    CollectionViewBack * _backView;
+    TagType _type;
+    NSString*_titleLabel;
+}
+
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.view.backgroundColor=[UIColor whiteColor];
+    
+    addNavigationRightBarButton(rightBarItem_downArrowType, self, @selector(buttonClick:));
+
+    
+    [[MyServerRequestManager getManager]addListener:self];
+
+    [self initCollectionView];
+
+    _backView = [CollectionViewBack new];
+    __weak typeof(self) mySelf = self;
+    [_backView setClickActionWithBlock:^{
+        [mySelf performSelector:@selector(classRequrt) withObject:nil afterDelay:delayTime];
+    }];
+    [self.view addSubview:_backView];
+   
+    _backView.status = Loading;
+  
+}
+- (void)buttonClick:(UIButton *)btn{
+    if (_delegate && [_delegate respondsToSelector:@selector(dismissCategoryViewController:)]) {
+        [self.delegate dismissCategoryViewController:self.navigationController];
+    }
+}
+//刷新数据
+- (void)classRequrt{
+    [[MyServerRequestManager getManager] requestCategoryAppGameList:_type pageCount:1 isUseCache:YES userData:nil];
+
+}
+//分类请求
+- (void)AppRequrtManager{
+
+    [[MyServerRequestManager getManager] requestCategoryAppGameList:tagType_app pageCount:1 isUseCache:YES userData:nil];
+    _type=tagType_app;
+    _titleLabel=@"个应用";
+
+    self.title = @"应用分类";
+
+}
+- (void)GameRequrtManager{
+    [[MyServerRequestManager getManager] requestCategoryAppGameList:tagType_game pageCount:1 isUseCache:YES userData:nil];
+    _type=tagType_game;
+    _titleLabel=@"个游戏";
+    self.title = @"游戏分类";
+
+}
+//请求回调
+- (void)categoryAppGameRequestSuccess:(NSDictionary *)dataDic TagType:(TagType)tagType pageCount:(NSInteger)pageCount isUseCache:(BOOL)isUseCache userData:(id)userData{
+//    NSLog(@"chenggong-");
+    
+    
+    _backView.status = Hidden;
+    if (dataDic!=nil&&dataDic.count>0) {
+        
+    _dataArr=[dataDic objectForKey:@"data"];
+    }
+    [myCollectionView reloadData];
+}
+- (void)categoryAppGameRequestFailed:(TagType)tagType pageCount:(NSInteger)pageCount isUseCache:(BOOL)isUseCache userData:(id)userData{
+//    NSLog(@"shibai");
+    _backView.status = Failed;
+
+}
+
+-(void)viewWillLayoutSubviews
+{
+    [super viewWillLayoutSubviews];
+    _backView.frame = self.view.bounds;
+
+}
+
+- (void)initCollectionView{
+
+    UICollectionViewFlowLayout *flowLayout = [[UICollectionViewFlowLayout alloc] init];
+    flowLayout.scrollDirection = UICollectionViewScrollDirectionVertical;
+    myCollectionView = [[UICollectionView alloc] initWithFrame:CGRectMake(0, 0, MainScreen_Width, MainScreen_Height - 20+15) collectionViewLayout:flowLayout];
+    
+    [myCollectionView registerClass:[ClassificationCell class] forCellWithReuseIdentifier:classificationCell];
+    myCollectionView.showsHorizontalScrollIndicator = YES;
+    myCollectionView.pagingEnabled = NO;
+    myCollectionView.dataSource = self;
+    myCollectionView.delegate = self;
+    myCollectionView.backgroundColor=[UIColor whiteColor];
+    [self.view addSubview:myCollectionView];
+}
+//下滑手势
+-(void)handleSwipeFrom:(UISwipeGestureRecognizer *)recognizer{
+//    NSLog(@"swipe ");
+
+    if(recognizer.direction==UISwipeGestureRecognizerDirectionDown) {
+        
+        [self dismissViewControllerAnimated:YES completion:nil];
+//        NSLog(@"swipe down");
+    }
+
+}
+#pragma mark - UICollectionView datasource
+
+-(NSInteger)numberOfSectionsInCollectionView:(UICollectionView *)collectionView
+{
+    return 1;
+}
+
+-(NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section
+{
+        return _dataArr.count;
+}
+
+-(UICollectionViewCell *)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath
+{
+
+        ClassificationCell *cell = (ClassificationCell *)[collectionView dequeueReusableCellWithReuseIdentifier:classificationCell forIndexPath:indexPath];
+    
+    if (_dataArr!=nil&&_dataArr.count>0) {
+        NSDictionary*dic=[_dataArr objectAtIndex:indexPath.row];
+        [cell.backImage sd_setImageWithURL:[NSURL URLWithString:[dic objectForKey:@"iconurl"]] placeholderImage:[UIImage imageNamed:@"icon60x60"]];
+        cell.nameLabel.text=[dic objectForKey:@"category_name"];
+        NSString*nub=[dic objectForKey:@"category_count"];
+        if (_titleLabel){
+            cell.numberLabel.text=[nub stringByAppendingString:_titleLabel];
+        }
+        if(indexPath.row%2 ==0){
+            cell.verticalImage.hidden=NO;
+            [cell setLayoutLeft:YES];
+            
+        }else{
+            cell.verticalImage.hidden=YES;
+            [cell setLayoutLeft:NO];
+        }
+    }
+    
+    cell.backgroundColor = [UIColor clearColor];
+    
+    
+    return cell;
+}
+
+#pragma mark - UICollectionViewLayoutDelegate
+
+-(CGSize)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout sizeForItemAtIndexPath:(NSIndexPath *)indexPath
+{
+    CGFloat width = (collectionView.frame.size.width-27*MULTIPLE)*0.5;
+    CGSize size = CGSizeMake( width,74*MULTIPLE);
+    return size;
+}
+
+-(UIEdgeInsets)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout insetForSectionAtIndex:(NSInteger)section
+{
+    //上左下右
+    UIEdgeInsets insets = UIEdgeInsetsMake(2*MULTIPLE, 13*MULTIPLE, 0*MULTIPLE, 13*MULTIPLE);
+    return insets;
+}
+
+- (CGFloat)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout*)collectionViewLayout minimumLineSpacingForSectionAtIndex:(NSInteger)section
+{
+    return 1;
+}
+- (CGFloat)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout*)collectionViewLayout minimumInteritemSpacingForSectionAtIndex:(NSInteger)section{
+    return 0;
+}
+
+-(void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath
+{
+    NSDictionary*dic=[_dataArr objectAtIndex:indexPath.row];
+
+    ClassificationViewController*class=[[ClassificationViewController alloc] init];
+    if (_type==tagType_app) {
+        [class requestData:[dic objectForKey:@"category_id"]apptype:@"tagType_app"];
+        
+    }else{
+          [class requestData:[dic objectForKey:@"category_id"]apptype:@"tagType_game"];
+    }
+    class.title=[dic objectForKey:@"category_name"];
+    
+    [self.navigationController pushViewController:class animated:YES];
+    
+}
+
+-(void)viewWillAppear:(BOOL)animated
+{
+    [super viewWillAppear:animated];
+    
+//    self.navigationController.navigationBar.hidden=YES;
+
+}
+-(void)viewDidAppear:(BOOL)animated{
+    [super viewDidAppear:animated];
+}
+
+- (void)dealloc
+{
+    self.delegate = nil;
+}
+
+@end

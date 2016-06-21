@@ -1,0 +1,232 @@
+//
+//  SearchToolBar.m
+//  MyHelper
+//
+//  Created by liguiyang on 14-12-30.
+//  Copyright (c) 2014年 myHelper. All rights reserved.
+//
+
+#import "SearchToolBar.h"
+
+@interface SearchToolBar ()
+{
+    UIView      *leftView;
+    UITextField *searchField; // 搜索框
+    UIButton *cancelButton; // 取消聚焦按钮
+    
+    CGFloat scale;
+    CGFloat normalLength; // 非聚焦状态
+    CGFloat shortLength; // 聚焦状态
+    BOOL isFocusFlag; // 是否聚焦
+}
+
+@end
+
+@implementation SearchToolBar
+
+- (instancetype)init
+{
+    self = [super init];
+    
+    if (self) {
+        
+        // 初始化值
+        isFocusFlag = NO;
+        scale = MainScreen_Width/375;
+        normalLength = 306*scale;
+        shortLength  = 260*scale;
+        
+        // 返回按钮
+//        backButton = [UIButton buttonWithType:UIButtonTypeCustom];
+//        [backButton setTitle:@"返" forState:UIControlStateNormal];
+//        [backButton setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
+//        [backButton addTarget:self action:@selector(backButtonClick:) forControlEvents:UIControlEventTouchUpInside];
+//        [self addSubview:backButton];
+        
+        // 搜索框
+        UIImage *iconImg = [UIImage imageNamed:@"search_icon.png"];
+        UIImage *slashImg = [UIImage imageNamed:@"search_slash.png"];
+        UIImageView *iconImgV  = [[UIImageView alloc] initWithImage:iconImg];
+        UIImageView *slashImgV = [[UIImageView alloc] initWithImage:slashImg];
+        leftView = [[UIView alloc] init];
+        [leftView addSubview:iconImgV];
+        [leftView addSubview:slashImgV];
+        
+        iconImgV.frame = CGRectMake(10,(30-iconImg.size.height*0.5)*0.5, iconImg.size.width*0.5, iconImg.size.height*0.5);
+        slashImgV.frame = CGRectMake(iconImgV.frame.origin.x+iconImgV.frame.size.width+7, 1, 6, 29);
+        leftView.frame = CGRectMake(0, 0, 40, 30);
+        
+        searchField = [[UITextField alloc] init];
+        searchField.delegate = self;
+        searchField.leftView = leftView;
+        searchField.leftViewMode = UITextFieldViewModeAlways;
+        searchField.clearButtonMode = UITextFieldViewModeWhileEditing;
+        searchField.returnKeyType = UIReturnKeySearch;
+        searchField.borderStyle = UITextBorderStyleRoundedRect;
+        searchField.font = [UIFont systemFontOfSize:15.0];
+        searchField.placeholder = NOT_SEARCH_RESULT;
+        searchField.backgroundColor = hllColor(237.0, 237.0, 237.0, 1.0);
+        [searchField addTarget:self action:@selector(searchFiledDidChange:) forControlEvents:UIControlEventEditingChanged];
+        [self addSubview:searchField];
+        
+        // 取消聚焦按钮
+        cancelButton = [UIButton buttonWithType:UIButtonTypeCustom];
+        [cancelButton setTitle:@"取消" forState:UIControlStateNormal];
+        [cancelButton setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
+        [cancelButton addTarget:self action:@selector(cancelButtonClick:) forControlEvents:UIControlEventTouchUpInside];
+        cancelButton.hidden = YES;
+        [self addSubview:cancelButton];
+        
+    }
+    
+    return self;
+}
+
+- (void)layoutSubviews
+{
+    CGFloat length = isFocusFlag?shortLength:normalLength;
+    
+    self.frame = CGRectMake(0, 0, MainScreen_Width, 64);
+    
+    searchField.frame = CGRectMake(10*PHONE_SCALE_PARAMETER,0+7, length + 38*PHONE_SCALE_PARAMETER, 30);
+    cancelButton.frame = CGRectMake(searchField.frame.origin.x+searchField.frame.size.width+5, 0, MainScreen_Width-(searchField.frame.origin.x+searchField.frame.size.width+5), 44);
+}
+
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event
+{
+    UIView *hitView = [super hitTest:point withEvent:event];
+    
+    if (hitView == self) {
+        return nil;
+    }
+    
+    return hitView;
+}
+
+#pragma mark UITextFieldelegate
+
+- (BOOL)textFieldShouldBeginEditing:(UITextField *)textField
+{
+    return YES;
+}
+
+- (void)textFieldDidBeginEditing:(UITextField *)textField
+{
+    // 更改UI
+    [self setFocus:YES];
+    // 调用代理方法
+    if (_delegate && [_delegate respondsToSelector:@selector(searchToolBarContentChange:)]) {
+        [_delegate searchToolBarContentChange:textField.text];
+    }
+}
+
+- (BOOL)textFieldShouldEndEditing:(UITextField *)textField
+{
+    return YES;
+}
+
+- (void)textFieldDidEndEditing:(UITextField *)textField
+{
+    [self setFocus:NO];
+}
+
+- (BOOL)textField:(UITextField *)textField shouldChangeCharactersInRange:(NSRange)range replacementString:(NSString *)string
+{
+    if ([string isEqualToString:@"\n"] || [string isEqualToString:@""]) {
+        return YES;
+    }
+    
+    NSString *content = [textField.text stringByAppendingString:string];
+    if (content.length > 30) {
+        UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"超过最大字数30不能输入了" message:nil delegate:nil cancelButtonTitle:@"确定" otherButtonTitles:nil, nil];
+        [alert show];
+        return NO;
+    }
+    
+    return YES;
+}
+
+- (BOOL)textFieldShouldClear:(UITextField *)textField
+{
+    return YES;
+}
+
+- (BOOL)textFieldShouldReturn:(UITextField *)textField
+{
+    
+    NSString *contentStr = textField.text;
+    // 输入内容为空
+    if ([contentStr isEqualToString:@""]) {
+        UIAlertView *alertView = [[UIAlertView alloc] initWithTitle:@"" message:@"请输入搜索词" delegate:nil cancelButtonTitle:@"确定" otherButtonTitles:nil, nil];
+        [alertView show];
+        return NO;
+    }
+    
+    // 搜索
+    if (_delegate && [_delegate respondsToSelector:@selector(searchToolBarSearch:)]) {
+        [_delegate searchToolBarSearch:contentStr];
+    }
+    // 取消键盘第一响应者
+    [textField resignFirstResponder];
+    return YES;
+}
+
+#pragma mark Utility
+
+- (void)setSearchContent:(NSString *)content
+{
+    searchField.text = content;
+}
+
+- (NSString *)getSearchContent
+{
+    return searchField.text;
+}
+
+- (void)searchFiledDidChange:(id)sender
+{
+    if (_delegate && [_delegate respondsToSelector:@selector(searchToolBarContentChange:)]) {
+        [_delegate searchToolBarContentChange:searchField.text];
+    }
+}
+
+- (void)cancelButtonClick:(id)sender
+{
+    [self setFocus:NO]; // 更改UI
+    [searchField resignFirstResponder]; // 取消键盘第一响应者
+    //
+    if (_delegate && [_delegate respondsToSelector:@selector(searchToolBarCancelClick:)]) {
+        [_delegate searchToolBarCancelClick:sender];
+    }
+}
+
+- (void)backButtonClick:(id)sender
+{
+    [self setFocus:NO]; // 更改UI
+    [searchField resignFirstResponder]; // 取消键盘第一响应者
+    //
+    if (_delegate && [_delegate respondsToSelector:@selector(searchToolBarBackClick:)]) {
+        [_delegate searchToolBarBackClick:sender];
+    }
+}
+
+- (void)setFocus:(BOOL)focus
+{
+    isFocusFlag = focus;
+    cancelButton.hidden = !focus;
+    [self setCustomFrame];
+}
+
+- (void)hideKeyboard
+{
+    [searchField resignFirstResponder];
+}
+
+- (void)setCustomFrame
+{
+    CGFloat length = isFocusFlag?shortLength:normalLength;
+    searchField.frame = CGRectMake(0+44+5, 20, length, 44);
+    cancelButton.frame = CGRectMake(searchField.frame.origin.x+searchField.frame.size.width+5, 0, MainScreen_Width-(searchField.frame.origin.x+searchField.frame.size.width+5), 44);
+}
+
+@end
